@@ -7,8 +7,9 @@
  * - ProductKpiData - The return type for the getProductKpiData function.
  */
 import {z} from 'genkit';
-import { getVulnerabilityCountsByProduct, getFindings } from '@/services/defectdojo';
-import { getProductInfoByName } from '@/services/defectdojo';
+import { defectDojoFetchAll, getProductInfoByName } from '@/services/defectdojo';
+import type { FindingSchema } from '@/services/defectdojo-types';
+
 
 const ProductKpiDataSchema = z.object({
   severityCounts: z.object({
@@ -37,29 +38,41 @@ export type ProductKpiInput = z.infer<typeof ProductKpiInputSchema>;
 export async function getProductKpiData(input: ProductKpiInput): Promise<ProductKpiData> {
     const { productName } = input;
     
-    // 1. Get severity counts for the product
-    const severityCounts = await getVulnerabilityCountsByProduct(productName);
-
-    // 2. Get top 5 critical findings
     const productInfo = await getProductInfoByName(productName);
     if (!productInfo) {
         throw new Error(`Product ${productName} not found`);
     }
 
-    const criticalFindingsRaw = await getFindings({
-        productName: productName,
-        severity: 'Critical',
-        limit: 5
-    });
+    const allFindings = await defectDojoFetchAll<z.infer<typeof FindingSchema>>(
+        `findings/?test__engagement__product=${productInfo.id}&active=true&duplicate=false`
+    );
 
-    const criticalFindingsData = JSON.parse(criticalFindingsRaw);
+    const severityCounts: Record<string, number> = { Critical: 0, High: 0, Medium: 0, Low: 0, Info: 0, Total: 0 };
+    const criticalFindings: any[] = [];
 
-    const topCriticalFindings = criticalFindingsData.findings ? criticalFindingsData.findings.map((f: any) => ({
-        id: f.id,
-        title: f.title,
-        severity: f.severity,
-        cwe: f.cwe
-    })) : [];
+    for (const finding of allFindings) {
+        if (severityCounts[finding.severity] !== undefined) {
+             severityCounts[finding.severity]++;
+             severityCounts.Total++;
+        }
+        if (finding.severity === 'Critical') {
+            criticalFindings.push(finding);
+        }
+    }
+
+    const topCriticalFindings = criticalFindings
+        .sort((a, b) => {
+            const scoreA = parseFloat(a.cvssv3_score) || 0;
+            const scoreB = parseFloat(b.cvssv3_score) || 0;
+            return scoreB - scoreA;
+        })
+        .slice(0, 5)
+        .map((f: any) => ({
+            id: f.id,
+            title: f.title,
+            severity: f.severity,
+            cwe: f.cwe ? `CWE-${f.cwe}` : 'N/A'
+        }));
 
     return {
         severityCounts,

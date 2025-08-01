@@ -44,7 +44,6 @@ async function defectDojoFetch(url: string, options: RequestInit = {}) {
         throw new Error(`Failed to fetch from DefectDojo: ${response.status} ${response.statusText}. Details: ${errorText}`);
     }
     
-    // console.log(`[DefectDojo Fetch] Successfully fetched data from: ${fullUrl}`);
     return response.json();
 }
 
@@ -69,13 +68,10 @@ export async function defectDojoFetchAll<T>(initialRelativeUrl: string): Promise
             }
         }
         
-        let nextUrlFromApi = ('next' in data && data.next) ? data.next : null;
+        // Use the 'next' URL from the API response for pagination.
+        // It's an absolute URL, so no need to construct it.
+        const nextUrlFromApi = ('next' in data && data.next) ? data.next : null;
         
-        // Prevent protocol change bug
-        if (nextUrlFromApi && API_URL?.startsWith('http://') && nextUrlFromApi.startsWith('https://')) {
-            nextUrlFromApi = nextUrlFromApi.replace('https://', 'http://');
-        }
-
         currentUrl = nextUrlFromApi;
     }
     return allResults;
@@ -88,7 +84,6 @@ export async function getProductInfoByName(productName: string): Promise<{ id: n
     // Check hardcoded map first for performance
     for (const key in PRODUCT_MAP) {
         if (key.toLowerCase() === lowerProductName || PRODUCT_MAP[key].name.toLowerCase().replace(/[\s\-_]/g, '') === lowerProductName) {
-            // console.log(`[getProductInfoByName] Found product '${productName}' in cache.`);
             return PRODUCT_MAP[key];
         }
     }
@@ -215,7 +210,7 @@ export async function getFindings(input: GetFindingsInput) {
             findings: parsedFindings.results.map(f => {
                 let findingProduct = 'Unknown Product';
                 // Add defensive check for test and test.engagement
-                if (f.test && f.test.engagement && f.test.engagement.product) {
+                if (f.test && typeof f.test === 'object' && f.test.engagement && f.test.engagement.product) {
                     findingProduct = productMap.get(f.test.engagement.product) ?? 'Unknown Product';
                 }
                 
@@ -228,7 +223,7 @@ export async function getFindings(input: GetFindingsInput) {
                     cwe: f.cwe ? `CWE-${f.cwe}` : 'Unknown',
                     cvssv3_score: f.cvssv3_score || 'N/A',
                     severity: f.severity,
-                    tool: (f.test && f.test.test_type) ? f.test.test_type.name : 'Unknown',
+                    tool: (f.test && typeof f.test === 'object' && f.test.test_type) ? f.test.test_type.name : 'Unknown',
                     date: f.date,
                 }
             }),
@@ -294,14 +289,13 @@ export async function analyzeVulnerabilityData(analysisType: 'component_risk' | 
 
         const findingsWithDetails = allFindings.map(f => {
             let findingProductName = 'Unknown Product';
-            // Add defensive check for test and test.engagement
-            if (f.test && f.test.engagement && f.test.engagement.product) {
+            if (f.test && typeof f.test === 'object' && f.test.engagement && f.test.engagement.product) {
                 findingProductName = productMap.get(f.test.engagement.product) ?? 'Unknown Product';
             }
             return {
                 ...f,
                 component: f.component_name || extractComponentFromTitle(f.title) || 'unknown',
-                tool: (f.test && f.test.test_type) ? f.test.test_type.name : 'Unknown',
+                tool: (f.test && typeof f.test === 'object' && f.test.test_type) ? f.test.test_type.name : 'Unknown',
                 product_name: findingProductName
             }
         });
@@ -473,33 +467,6 @@ export async function analyzeVulnerabilityData(analysisType: 'component_risk' | 
 }
 
 
-export async function getVulnerabilityCountsByProduct(productName: string): Promise<Record<string, number>> {
-    const counts: Record<string, number> = { Critical: 0, High: 0, Medium: 0, Low: 0, Info: 0, Total: 0 };
-    
-    try {
-        const productInfo = await getProductInfoByName(productName);
-        if (!productInfo) {
-            console.error(`[getVulnerabilityCountsByProduct] Product '${productName}' not found.`);
-            return counts;
-        }
-
-        const allFindings = await defectDojoFetchAll<z.infer<typeof DefectDojoFindingSchema>>(`findings/?test__engagement__product=${productInfo.id}&active=true&duplicate=false`);
-        
-        for (const finding of allFindings) {
-            if (counts[finding.severity] !== undefined) {
-                 counts[finding.severity]++;
-                 counts.Total++;
-            }
-        }
-
-        return counts;
-    } catch(error) {
-        console.error(`[getVulnerabilityCountsByProduct] Could not retrieve counts for ${productName}:`, error);
-        return counts; // Return empty counts on error
-    }
-}
-
-
 export async function getTotalFindingCount(productName?: string, severity?: string) {
     try {
         const queryParams = new URLSearchParams({
@@ -530,24 +497,13 @@ export async function getTotalFindingCount(productName?: string, severity?: stri
     }
 }
 
-export async function getProductVulnerabilitySummary() {
-    try {
-        const allProducts = await getProductList();
-        const summary: Record<string, Record<string, number>> = {};
+// This function is no longer needed as the KPI dashboard now fetches all findings at once.
+// export async function getVulnerabilityCountsByProduct(productName: string): Promise<Record<string, number>> {
+// }
 
-        for (const product of allProducts) {
-             if (!product.name) continue;
-             summary[product.name] = { Critical: 0, High: 0, Medium: 0, Low: 0, Info: 0, Total: 0 };
-             const counts = await getVulnerabilityCountsByProduct(product.name);
-             summary[product.name] = counts;
-        }
-        return summary;
-
-    } catch(error) {
-        console.error("Failed to get product vulnerability summary", error);
-        return {};
-    }
-}
+// This function is no longer needed as the KPI dashboard logic is self-contained.
+// export async function getProductVulnerabilitySummary() {
+// }
 
 
 export async function getTopCriticalVulnerabilityPerProduct(): Promise<string> {

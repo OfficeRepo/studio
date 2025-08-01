@@ -38,7 +38,9 @@ export const FindingSchema = z.object({
     cwe: z.number().nullable(),
     cve: z.string().nullable().optional(),
     cvssv3_score: z.union([z.string(), z.number()]).nullable(),
-    test: TestObjectSchema.optional(), // Make the 'test' object optional to prevent crashes
+    // The 'test' field can either be a full object or just an ID (number).
+    // We also make it optional as some findings might not have it.
+    test: z.union([TestObjectSchema, z.number()]).optional(),
     found_by: z.array(z.number()),
     date: z.string(), // ISO date string
     component_name: z.string().nullable().optional(),
