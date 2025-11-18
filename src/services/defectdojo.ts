@@ -432,7 +432,7 @@ export async function analyzeVulnerabilityData(analysisType: 'component_risk' | 
                 })
                 .sort((a, b) => {
                     if (b.critical !== a.critical) return b.critical - a.critical;
-                    if (b.high !== a.high) return b.high - a.count;
+                    if (b.high !== a.high) return b.count - a.count;
                 })
                 .slice(0, limit);
             
@@ -498,7 +498,7 @@ export async function getTotalFindingCount(productName?: string, severity?: stri
 /**
  * Finds vulnerabilities from the CISA KEV catalog within DefectDojo findings.
  * This is done by fetching all relevant findings and filtering them in-memory
- * against the CISA KEV catalog to avoid creating a URL that is too long.
+ * to avoid creating a URL that is too long.
  */
 export async function getKevFindings(productName?: string, limit: number = 25) {
     try {
@@ -515,9 +515,8 @@ export async function getKevFindings(productName?: string, limit: number = 25) {
         const queryParams = new URLSearchParams({
             active: 'true',
             duplicate: 'false',
-            limit: '5000', // Fetch a large number of findings to filter
+            limit: '2000', // Fetch a large number of findings to filter
             prefetch: 'test,test__engagement,test__engagement__product',
-            cve__isnull: 'false' // Only fetch findings that have a CVE
         });
 
         let requestedProductName = 'All Products';
