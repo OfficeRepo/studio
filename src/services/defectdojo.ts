@@ -1,4 +1,5 @@
 
+
 'use server';
 
 import { z } from 'zod';
@@ -496,6 +497,8 @@ export async function getTotalFindingCount(productName?: string, severity?: stri
 
 /**
  * Finds vulnerabilities from the CISA KEV catalog within DefectDojo findings.
+ * This is done by fetching all relevant findings and filtering them in-memory
+ * against the CISA KEV catalog to avoid creating a URL that is too long.
  */
 export async function getKevFindings(productName?: string, limit: number = 25) {
     try {
@@ -512,8 +515,7 @@ export async function getKevFindings(productName?: string, limit: number = 25) {
         const queryParams = new URLSearchParams({
             active: 'true',
             duplicate: 'false',
-            limit: '2000', // Fetch a large number to ensure we find matches
-            cve__in: Array.from(kevMap.keys()).join(','),
+            limit: '2000', // Fetch a large number of findings to filter
             prefetch: 'test,test__engagement,test__engagement__product',
         });
 
@@ -527,11 +529,12 @@ export async function getKevFindings(productName?: string, limit: number = 25) {
                 return { message: `Product '${productName}' not found.` };
             }
         }
-
+        
+        // Fetch all findings for the scope, then filter locally
         const allFindings = await defectDojoFetchAll<z.infer<typeof FindingSchema>>(`findings/?${queryParams.toString()}`);
         
         const matchedKevs = allFindings
-            .filter(f => f.cve && kevMap.has(f.cve.toUpperCase()))
+            .filter(f => f.cve && kevMap.has(f.cve.toUpperCase())) // Filter in-memory
             .map(f => {
                 const kevDetails = kevMap.get(f.cve!.toUpperCase())!;
                 const findingProduct = (f.test && typeof f.test === 'object' && f.test.engagement?.product) 
