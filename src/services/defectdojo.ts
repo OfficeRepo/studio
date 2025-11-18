@@ -4,6 +4,7 @@
 import { z } from 'zod';
 import { PRODUCT_MAP, KNOWN_COMPONENTS } from './defectdojo-maps';
 import { ProductSchema, TestTypeSchema, FindingSchema } from './defectdojo-types';
+import { getKevCatalogMap } from './cisa';
 
 
 const API_URL = process.env.DEFECTDOJO_API_URL;
@@ -165,7 +166,6 @@ export async function getFindings(input: GetFindingsInput) {
         });
 
         if (severity) {
-            // Correctly use 'severity' for a single value.
             queryParams.set('severity', severity);
         }
         if (cve) queryParams.set('cve', cve);
@@ -431,8 +431,7 @@ export async function analyzeVulnerabilityData(analysisType: 'component_risk' | 
                 })
                 .sort((a, b) => {
                     if (b.critical !== a.critical) return b.critical - a.critical;
-                    if (b.high !== a.high) return b.high - a.high;
-                    return b.count - a.count;
+                    if (b.high !== a.high) return b.high - a.count;
                 })
                 .slice(0, limit);
             
@@ -492,5 +491,75 @@ export async function getTotalFindingCount(productName?: string, severity?: stri
         const errorMessage = error instanceof Error ? error.message : String(error);
         console.error(`[getTotalFindingCount] Error: ${errorMessage}`);
         return { error: `Failed to retrieve total finding count: ${errorMessage}` };
+    }
+}
+
+/**
+ * Finds vulnerabilities from the CISA KEV catalog within DefectDojo findings.
+ */
+export async function getKevFindings(productName?: string, limit: number = 25) {
+    try {
+        const [kevMap, allProducts] = await Promise.all([
+            getKevCatalogMap(),
+            getProductList(),
+        ]);
+
+        if (kevMap.size === 0) {
+            return { message: "Could not fetch the CISA KEV catalog. Please try again later." };
+        }
+        const productMap = new Map(allProducts.map(p => [p.id, p.name]));
+
+        const queryParams = new URLSearchParams({
+            active: 'true',
+            duplicate: 'false',
+            limit: '2000', // Fetch a large number to ensure we find matches
+            cve__in: Array.from(kevMap.keys()).join(','),
+            prefetch: 'test,test__engagement,test__engagement__product',
+        });
+
+        let requestedProductName = 'All Products';
+        if (productName) {
+            const productInfo = await getProductInfoByName(productName);
+            if (productInfo) {
+                queryParams.set('test__engagement__product', String(productInfo.id));
+                requestedProductName = productInfo.name;
+            } else {
+                return { message: `Product '${productName}' not found.` };
+            }
+        }
+
+        const allFindings = await defectDojoFetchAll<z.infer<typeof FindingSchema>>(`findings/?${queryParams.toString()}`);
+        
+        const matchedKevs = allFindings
+            .filter(f => f.cve && kevMap.has(f.cve.toUpperCase()))
+            .map(f => {
+                const kevDetails = kevMap.get(f.cve!.toUpperCase())!;
+                const findingProduct = (f.test && typeof f.test === 'object' && f.test.engagement?.product) 
+                    ? productMap.get(f.test.engagement.product) : 'Unknown Product';
+                
+                return {
+                    id: f.id,
+                    title: f.title,
+                    cve: f.cve!,
+                    severity: f.severity,
+                    product: findingProduct,
+                    remediation: kevDetails.requiredAction,
+                    kev_due_date: kevDetails.dueDate,
+                };
+            })
+            .sort((a,b) => new Date(a.kev_due_date).getTime() - new Date(b.kev_due_date).getTime());
+        
+        if (matchedKevs.length === 0) {
+            return { message: `No CISA KEVs found in ${requestedProductName}.` };
+        }
+        
+        return {
+            message: `Found ${matchedKevs.length} CISA KEV(s) in ${requestedProductName}.`,
+            findings: matchedKevs.slice(0, limit),
+        };
+
+    } catch (error) {
+        console.error(`[getKevFindings] An exception occurred. Details:`, error);
+        return { error: `An exception occurred during KEV analysis. Details: ${error instanceof Error ? error.message : String(error)}` };
     }
 }
