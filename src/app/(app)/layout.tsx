@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   BotMessageSquare,
-  Settings,
   LayoutDashboard,
 } from 'lucide-react';
 import {
@@ -24,6 +23,8 @@ import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
 import { DataProvider } from '@/context/DataContext';
+import { ThemeToggle } from '@/components/ThemeToggle';
+
 
 const AppLayout = ({ children }: { children: React.ReactNode }) => {
   const pathname = usePathname();
@@ -92,10 +93,7 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
         <SidebarInset>
           <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b bg-background/80 px-4 backdrop-blur-sm md:justify-end">
             <SidebarTrigger className="md:hidden" />
-            <Button variant="ghost" size="icon">
-              <Settings className="h-5 w-5" />
-              <span className="sr-only">Settings</span>
-            </Button>
+            <ThemeToggle />
           </header>
           <main className="flex-1 p-4 md:p-6 animate-fade-in">
               {children}

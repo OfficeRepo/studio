@@ -1,6 +1,7 @@
 import type {Metadata} from 'next';
 import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
+import { ThemeProvider } from '@/context/ThemeProvider';
 
 export const metadata: Metadata = {
   title: 'DojoGPT',
@@ -14,9 +15,16 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`font-body antialiased`}>
-        {children}
-        <Toaster />
+      <body>
+        <ThemeProvider
+            attribute="class"
+            defaultTheme="system"
+            enableSystem
+            disableTransitionOnChange
+        >
+            {children}
+            <Toaster />
+        </ThemeProvider>
       </body>
     </html>
   );
