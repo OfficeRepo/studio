@@ -127,13 +127,17 @@ export default function ChatPage() {
                 ) : (
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm]}
-                    className="prose prose-sm prose-invert max-w-none"
+                    className="prose prose-sm dark:prose-invert max-w-none"
                     components={{
-                      p: ({node, ...props}) => <p className="leading-relaxed last:mb-0" {...props} />,
-                      ul: ({node, ...props}) => <ul className="space-y-1 list-disc list-outside ml-4" {...props} />,
-                      ol: ({node, ...props}) => <ol className="space-y-1 list-decimal list-outside ml-4" {...props} />,
+                      p: ({node, ...props}) => <p className="leading-relaxed mb-4 last:mb-0" {...props} />,
+                      ul: ({node, ...props}) => <ul className="space-y-2 list-disc list-outside ml-4 mb-4" {...props} />,
+                      ol: ({node, ...props}) => <ol className="space-y-2 list-decimal list-outside ml-4 mb-4" {...props} />,
                       li: ({node, ...props}) => <li className="pl-1" {...props} />,
                       strong: ({node, ...props}) => <strong className="font-semibold" {...props} />,
+                      h1: ({node, ...props}) => <h1 className="text-lg font-bold mb-4" {...props} />,
+                      h2: ({node, ...props}) => <h2 className="text-md font-semibold mb-3" {...props} />,
+                      h3: ({node, ...props}) => <h3 className="text-md font-semibold mb-2" {...props} />,
+                      hr: ({node, ...props}) => <hr className="my-4 border-border" {...props} />,
                     }}
                   >{message.content}</ReactMarkdown>
                 )}
