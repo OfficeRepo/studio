@@ -3,7 +3,7 @@
 
 import { z } from 'zod';
 import { PRODUCT_MAP, KNOWN_COMPONENTS } from './defectdojo-maps';
-import { ProductSchema, TestTypeSchema, FindingSchema as DefectDojoFindingSchema } from './defectdojo-types';
+import { ProductSchema, TestTypeSchema, TestObjectSchema, FindingSchema } from './defectdojo-types';
 
 
 const API_URL = process.env.DEFECTDOJO_API_URL;
@@ -12,7 +12,7 @@ const API_KEY = process.env.DEFECTDOJO_API_KEY;
 const FindingListSchema = z.object({
     count: z.number(),
     next: z.string().nullable(),
-    results: z.array(DefectDojoFindingSchema),
+    results: z.array(FindingSchema),
 });
 
 
@@ -22,8 +22,6 @@ async function defectDojoFetch(url: string, options: RequestInit = {}) {
         throw new Error('DefectDojo API URL or Key is not configured.');
     }
 
-    // Use the full URL if it's already provided (e.g., from a 'next' link)
-    // Otherwise, construct it from the base API URL.
     const fullUrl = url.startsWith('http') ? url : `${API_URL.replace(/\/$/, '')}/api/v2/${url.replace(/^\//, '')}`;
 
     console.log(`[DefectDojo Fetch] Calling API: ${fullUrl}`);
@@ -35,7 +33,7 @@ async function defectDojoFetch(url: string, options: RequestInit = {}) {
             'Content-Type': 'application/json',
             'Authorization': `Token ${API_KEY}`,
         },
-        cache: 'no-store', // Ensure fresh data is fetched
+        cache: 'no-store',
     });
 
     if (!response.ok) {
@@ -56,20 +54,16 @@ export async function defectDojoFetchAll<T>(initialRelativeUrl: string): Promise
     
     while (currentUrl) {
         const data = await defectDojoFetch(currentUrl);
-        // Handle both paginated (results property) and non-paginated (direct array) responses
         const results = Array.isArray(data) ? data : (data.results as T[] | undefined);
 
         if (results && results.length > 0) {
             allResults.push(...results);
         } else if (!('next' in data)) {
-            // Handle single object responses which are not in an array
             if (data && typeof data === 'object' && !Array.isArray(data) && Object.keys(data).length > 0 && !data.results) {
                 return [data as T];
             }
         }
         
-        // Use the 'next' URL from the API response for pagination.
-        // It's an absolute URL, so no need to construct it.
         const nextUrlFromApi = ('next' in data && data.next) ? data.next : null;
         
         currentUrl = nextUrlFromApi;
@@ -81,14 +75,13 @@ export async function defectDojoFetchAll<T>(initialRelativeUrl: string): Promise
 export async function getProductInfoByName(productName: string): Promise<{ id: number; name: string } | null> {
     const lowerProductName = productName.trim().toLowerCase().replace(/[\s\-_]/g, '');
     
-    // Check hardcoded map first for performance
     for (const key in PRODUCT_MAP) {
         if (key.toLowerCase() === lowerProductName || PRODUCT_MAP[key].name.toLowerCase().replace(/[\s\-_]/g, '') === lowerProductName) {
+            console.log(`[getProductInfoByName] Found product '${productName}' in cache.`);
             return PRODUCT_MAP[key];
         }
     }
     
-    // If not in map, query the API dynamically
     try {
         console.log(`[getProductInfoByName] Product '${productName}' not in cache, querying API...`);
         const products = await defectDojoFetchAll<z.infer<typeof ProductSchema>>(`products/?limit=1000`);
@@ -166,9 +159,14 @@ export async function getFindings(input: GetFindingsInput) {
             active: String(active),
             limit: String(limit),
             prefetch: 'test,test__test_type,test__engagement,test__engagement__product',
+            ordering: '-cvssv3_score' // Order by CVSS score descending
         });
 
-        if (severity) queryParams.set('severity__in', severity);
+        if (severity) {
+            // Use 'severity' for a single value, 'severity__in' for multiple.
+            // The AI prompt currently only sends single values.
+            queryParams.set('severity', severity);
+        }
         if (cve) queryParams.set('cve', cve);
 
         let requestedProductName = 'All Products';
@@ -209,7 +207,6 @@ export async function getFindings(input: GetFindingsInput) {
             product: requestedProductName,
             findings: parsedFindings.results.map(f => {
                 let findingProduct = 'Unknown Product';
-                // Add defensive check for test and test.engagement
                 if (f.test && typeof f.test === 'object' && f.test.engagement && f.test.engagement.product) {
                     findingProduct = productMap.get(f.test.engagement.product) ?? 'Unknown Product';
                 }
@@ -277,7 +274,7 @@ export async function analyzeVulnerabilityData(analysisType: 'component_risk' | 
         }
         
         console.log(`[analyzeVulnerabilityData] Querying findings with params: ${queryParams.toString()}`);
-        const allFindings = await defectDojoFetchAll<z.infer<typeof DefectDojoFindingSchema>>(`findings/?${queryParams.toString()}`);
+        const allFindings = await defectDojoFetchAll<z.infer<typeof FindingSchema>>(`findings/?${queryParams.toString()}`);
         
         if (allFindings.length === 0) {
             console.log("[analyzeVulnerabilityData] No active findings found for the specified criteria.");
@@ -482,7 +479,7 @@ export async function getTotalFindingCount(productName?: string, severity?: stri
             }
         }
         if (severity) {
-            queryParams.set('severity__in', severity);
+            queryParams.set('severity', severity);
         }
 
         const endpoint = `findings/?${queryParams.toString()}`;
@@ -494,54 +491,5 @@ export async function getTotalFindingCount(productName?: string, severity?: stri
         const errorMessage = error instanceof Error ? error.message : String(error);
         console.error(`[getTotalFindingCount] Error: ${errorMessage}`);
         return { error: `Failed to retrieve total finding count: ${errorMessage}` };
-    }
-}
-
-// This function is no longer needed as the KPI dashboard now fetches all findings at once.
-// export async function getVulnerabilityCountsByProduct(productName: string): Promise<Record<string, number>> {
-// }
-
-// This function is no longer needed as the KPI dashboard logic is self-contained.
-// export async function getProductVulnerabilitySummary() {
-// }
-
-
-export async function getTopCriticalVulnerabilityPerProduct(): Promise<string> {
-    try {
-        const allProducts = await getProductList();
-        const vulnerabilitiesByProduct = [];
-
-        for (const product of allProducts) {
-            if (!product.id || !product.name) continue;
-            
-            console.log(`[getTopCriticalVulnerabilityPerProduct] Fetching top critical for ${product.name}`);
-            const data = await defectDojoFetch(`findings/?test__engagement__product=${product.id}&severity=Critical&active=true&duplicate=false&limit=1&ordering=-cvssv3_score`);
-            const parsedFindings = FindingListSchema.parse(data);
-
-            if (parsedFindings.results.length > 0) {
-                const f = parsedFindings.results[0];
-                 vulnerabilitiesByProduct.push({
-                    product: product.name,
-                    vulnerability: {
-                        id: f.id,
-                        title: f.title,
-                        cve: f.cve || 'N/A',
-                        cwe: f.cwe ? `CWE-${f.cwe}` : 'Unknown',
-                        cvssv3_score: f.cvssv3_score || 'N/A',
-                        severity: f.severity,
-                    }
-                });
-            }
-        }
-
-        if (vulnerabilitiesByProduct.length === 0) {
-            return JSON.stringify({ message: "No critical vulnerabilities found for any product." });
-        }
-
-        return JSON.stringify({ vulnerabilitiesByProduct }, null, 2);
-
-    } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        return JSON.stringify({ error: `An exception occurred: ${errorMessage}` });
     }
 }

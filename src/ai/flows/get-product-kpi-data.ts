@@ -51,7 +51,7 @@ export async function getProductKpiData(input: ProductKpiInput): Promise<Product
     const criticalFindings: any[] = [];
 
     for (const finding of allFindings) {
-        if (severityCounts[finding.severity] !== undefined) {
+        if (finding.severity in severityCounts) {
              severityCounts[finding.severity]++;
              severityCounts.Total++;
         }
