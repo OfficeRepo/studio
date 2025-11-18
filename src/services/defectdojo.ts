@@ -51,41 +51,38 @@ async function defectDojoFetch(url: string, options: RequestInit = {}) {
  * Fetches all results from a paginated DefectDojo endpoint by following the 'next' links.
  */
 export async function defectDojoFetchAll<T>(initialRelativeUrl: string): Promise<T[]> {
-    const allResults: T[] = [];
+    let allResults: T[] = [];
     let currentUrl: string | null = initialRelativeUrl;
     
     console.log(`[defectDojoFetchAll] Starting fetch for: ${initialRelativeUrl}`);
     
     while (currentUrl) {
         const data = await defectDojoFetch(currentUrl);
-
-        // The schema for any paginated endpoint in DefectDojo
         const paginatedResponseSchema = z.object({
             count: z.number(),
             next: z.string().nullable(),
-            results: z.array(z.any()), // We'll parse the individual results later
+            results: z.array(z.any()),
         });
 
         const parsed = paginatedResponseSchema.safeParse(data);
         
         if (parsed.success) {
             console.log(`[defectDojoFetchAll] Fetched ${parsed.data.results.length} results. Total so far: ${allResults.length + parsed.data.results.length}`);
-            allResults.push(...(parsed.data.results as T[]));
+            allResults.push(...parsed.data.results); // Append results from the current page
             currentUrl = parsed.data.next; // Set the URL for the next iteration
             if (currentUrl) {
                 console.log(`[defectDojoFetchAll] Next page found: ${currentUrl}`);
             } else {
-                 console.log(`[defectDojoFetchAll] No more pages. Finished fetching.`);
+                console.log(`[defectDojoFetchAll] No more pages. Finished fetching.`);
             }
         } else {
-            // This handles cases where the response is not a paginated list, e.g., a single object.
              console.log("[defectDojoFetchAll] Response is not a paginated list. Returning data as is.");
              if (Array.isArray(data)) {
                 allResults.push(...data as T[]);
              } else if(typeof data === 'object' && data !== null) {
                 allResults.push(data as T);
              }
-             currentUrl = null; // Stop the loop
+             currentUrl = null;
         }
     }
     
