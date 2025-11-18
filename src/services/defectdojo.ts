@@ -54,33 +54,42 @@ export async function defectDojoFetchAll<T>(initialRelativeUrl: string): Promise
     const allResults: T[] = [];
     let currentUrl: string | null = initialRelativeUrl;
     
+    console.log(`[defectDojoFetchAll] Starting fetch for: ${initialRelativeUrl}`);
+    
     while (currentUrl) {
-        // Use the full URL if 'http' is present, otherwise treat as relative
         const data = await defectDojoFetch(currentUrl);
 
-        // This schema is for paginated endpoints like /findings, /products etc.
+        // The schema for any paginated endpoint in DefectDojo
         const paginatedResponseSchema = z.object({
-            results: z.array(z.any()),
+            count: z.number(),
             next: z.string().nullable(),
+            results: z.array(z.any()), // We'll parse the individual results later
         });
-        
-        const parsed = paginatedResponseSchema.safeParse(data);
 
+        const parsed = paginatedResponseSchema.safeParse(data);
+        
         if (parsed.success) {
-            if (parsed.data.results) {
-                allResults.push(...parsed.data.results as T[]);
+            console.log(`[defectDojoFetchAll] Fetched ${parsed.data.results.length} results. Total so far: ${allResults.length + parsed.data.results.length}`);
+            allResults.push(...(parsed.data.results as T[]));
+            currentUrl = parsed.data.next; // Set the URL for the next iteration
+            if (currentUrl) {
+                console.log(`[defectDojoFetchAll] Next page found: ${currentUrl}`);
+            } else {
+                 console.log(`[defectDojoFetchAll] No more pages. Finished fetching.`);
             }
-            currentUrl = parsed.data.next; // Continue to the next page
         } else {
-            // Handle non-paginated responses (e.g., a single object)
-            if (Array.isArray(data)) {
+            // This handles cases where the response is not a paginated list, e.g., a single object.
+             console.log("[defectDojoFetchAll] Response is not a paginated list. Returning data as is.");
+             if (Array.isArray(data)) {
                 allResults.push(...data as T[]);
-            } else if (typeof data === 'object' && data !== null) {
+             } else if(typeof data === 'object' && data !== null) {
                 allResults.push(data as T);
-            }
-            currentUrl = null; // Stop the loop
+             }
+             currentUrl = null; // Stop the loop
         }
     }
+    
+    console.log(`[defectDojoFetchAll] Total results fetched: ${allResults.length}`);
     return allResults;
 }
 
@@ -524,7 +533,7 @@ export async function getKevFindings(productName?: string, limit: number = 25) {
         const queryParams = new URLSearchParams({
             active: 'true',
             duplicate: 'false',
-            limit: '2000', // Fetch a large number of findings to filter
+            limit: '2000', // Set a high limit for each page
             prefetch: 'test,test__engagement,test__engagement__product',
         });
 
