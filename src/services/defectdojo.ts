@@ -48,29 +48,38 @@ async function defectDojoFetch(url: string, options: RequestInit = {}) {
 }
 
 /**
- * Fetches all results from a paginated DefectDojo endpoint.
+ * Fetches all results from a paginated DefectDojo endpoint by following the 'next' links.
  */
 export async function defectDojoFetchAll<T>(initialRelativeUrl: string): Promise<T[]> {
     const allResults: T[] = [];
     let currentUrl: string | null = initialRelativeUrl;
     
     while (currentUrl) {
+        // Use the full URL if 'http' is present, otherwise treat as relative
         const data = await defectDojoFetch(currentUrl);
-        const results = Array.isArray(data) ? data : (data.results as T[] | undefined);
 
-        if (results && results.length > 0) {
-            allResults.push(...results);
-        } else if (!('next' in data)) {
-            // Handle non-paginated single object responses
-            if (data && typeof data === 'object' && !Array.isArray(data) && Object.keys(data).length > 0 && !data.results) {
-                return [data as T];
+        // This schema is for paginated endpoints like /findings, /products etc.
+        const paginatedResponseSchema = z.object({
+            results: z.array(z.any()),
+            next: z.string().nullable(),
+        });
+        
+        const parsed = paginatedResponseSchema.safeParse(data);
+
+        if (parsed.success) {
+            if (parsed.data.results) {
+                allResults.push(...parsed.data.results as T[]);
             }
+            currentUrl = parsed.data.next; // Continue to the next page
+        } else {
+            // Handle non-paginated responses (e.g., a single object)
+            if (Array.isArray(data)) {
+                allResults.push(...data as T[]);
+            } else if (typeof data === 'object' && data !== null) {
+                allResults.push(data as T);
+            }
+            currentUrl = null; // Stop the loop
         }
-        
-        // Use the exact 'next' URL provided by the API, which handles pagination correctly
-        const nextUrlFromApi = ('next' in data && data.next) ? data.next : null;
-        
-        currentUrl = nextUrlFromApi;
     }
     return allResults;
 }
