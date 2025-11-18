@@ -515,8 +515,9 @@ export async function getKevFindings(productName?: string, limit: number = 25) {
         const queryParams = new URLSearchParams({
             active: 'true',
             duplicate: 'false',
-            limit: '2000', // Fetch a large number of findings to filter
+            limit: '5000', // Fetch a large number of findings to filter
             prefetch: 'test,test__engagement,test__engagement__product',
+            cve__isnull: 'false' // Only fetch findings that have a CVE
         });
 
         let requestedProductName = 'All Products';
