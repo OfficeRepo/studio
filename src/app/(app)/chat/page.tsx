@@ -119,7 +119,7 @@ export default function ChatPage() {
                   'max-w-xl rounded-lg px-4 py-3 text-sm',
                   message.role === 'user'
                     ? 'bg-primary text-primary-foreground'
-                    : 'bg-white shadow-[0_2px_8px_rgba(0,0,0,0.05)]'
+                    : 'bg-white text-foreground shadow-[0_2px_8px_rgba(0,0,0,0.05)]'
                 )}
               >
                 {message.role === 'user' ? (
@@ -127,7 +127,7 @@ export default function ChatPage() {
                 ) : (
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm]}
-                    className="prose prose-sm dark:prose-invert max-w-none"
+                    className="prose prose-sm max-w-none"
                     components={{
                       p: ({node, ...props}) => <p className="leading-relaxed mb-4 last:mb-0" {...props} />,
                       ul: ({node, ...props}) => <ul className="space-y-2 list-disc list-outside ml-4 mb-4" {...props} />,
