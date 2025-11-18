@@ -3,7 +3,7 @@
 
 import { z } from 'zod';
 import { PRODUCT_MAP, KNOWN_COMPONENTS } from './defectdojo-maps';
-import { ProductSchema, TestTypeSchema, TestObjectSchema, FindingSchema } from './defectdojo-types';
+import { ProductSchema, TestTypeSchema, FindingSchema } from './defectdojo-types';
 
 
 const API_URL = process.env.DEFECTDOJO_API_URL;
@@ -59,11 +59,13 @@ export async function defectDojoFetchAll<T>(initialRelativeUrl: string): Promise
         if (results && results.length > 0) {
             allResults.push(...results);
         } else if (!('next' in data)) {
+            // Handle non-paginated single object responses
             if (data && typeof data === 'object' && !Array.isArray(data) && Object.keys(data).length > 0 && !data.results) {
                 return [data as T];
             }
         }
         
+        // Use the exact 'next' URL provided by the API, which handles pagination correctly
         const nextUrlFromApi = ('next' in data && data.next) ? data.next : null;
         
         currentUrl = nextUrlFromApi;
@@ -159,12 +161,11 @@ export async function getFindings(input: GetFindingsInput) {
             active: String(active),
             limit: String(limit),
             prefetch: 'test,test__test_type,test__engagement,test__engagement__product',
-            ordering: '-cvssv3_score' // Order by CVSS score descending
+            ordering: '-cvssv3_score'
         });
 
         if (severity) {
-            // Use 'severity' for a single value, 'severity__in' for multiple.
-            // The AI prompt currently only sends single values.
+            // Correctly use 'severity' for a single value.
             queryParams.set('severity', severity);
         }
         if (cve) queryParams.set('cve', cve);
@@ -207,7 +208,7 @@ export async function getFindings(input: GetFindingsInput) {
             product: requestedProductName,
             findings: parsedFindings.results.map(f => {
                 let findingProduct = 'Unknown Product';
-                if (f.test && typeof f.test === 'object' && f.test.engagement && f.test.engagement.product) {
+                if (f.test && typeof f.test === 'object' && f.test.engagement && typeof f.test.engagement === 'object' && f.test.engagement.product) {
                     findingProduct = productMap.get(f.test.engagement.product) ?? 'Unknown Product';
                 }
                 
@@ -286,7 +287,7 @@ export async function analyzeVulnerabilityData(analysisType: 'component_risk' | 
 
         const findingsWithDetails = allFindings.map(f => {
             let findingProductName = 'Unknown Product';
-            if (f.test && typeof f.test === 'object' && f.test.engagement && f.test.engagement.product) {
+            if (f.test && typeof f.test === 'object' && f.test.engagement && typeof f.test.engagement === 'object' && f.test.engagement.product) {
                 findingProductName = productMap.get(f.test.engagement.product) ?? 'Unknown Product';
             }
             return {
