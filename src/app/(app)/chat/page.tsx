@@ -76,7 +76,7 @@ export default function ChatPage() {
   ];
 
   return (
-    <div className="flex h-[calc(100vh_-_theme(spacing.24))] flex-col bg-card border rounded-lg shadow-sm">
+    <div className="flex h-[calc(100vh_-_theme(spacing.24))] flex-col bg-card rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.05)]">
       <ScrollArea className="flex-1" ref={scrollAreaRef}>
         <div className="p-4 sm:p-6 space-y-6">
           {messages.length === 0 && !isLoading && (
@@ -116,10 +116,10 @@ export default function ChatPage() {
               )}
               <div
                 className={cn(
-                  'max-w-xl rounded-lg px-4 py-3 text-sm shadow-sm',
+                  'max-w-xl rounded-lg px-4 py-3 text-sm',
                   message.role === 'user'
                     ? 'bg-primary text-primary-foreground'
-                    : 'bg-secondary'
+                    : 'bg-white shadow-[0_2px_8px_rgba(0,0,0,0.05)]'
                 )}
               >
                 {message.role === 'user' ? (
@@ -154,7 +154,7 @@ export default function ChatPage() {
                <Avatar className="h-8 w-8 border">
                 <AvatarFallback><Bot className="h-5 w-5 text-primary" /></AvatarFallback>
               </Avatar>
-              <div className="max-w-lg rounded-lg bg-secondary shadow-sm px-4 py-3 text-sm flex items-center gap-2">
+              <div className="max-w-lg rounded-lg bg-white shadow-[0_2px_8px_rgba(0,0,0,0.05)] px-4 py-3 text-sm flex items-center gap-2">
                 <CircleDashed className="h-4 w-4 animate-spin" />
                 <span>Thinking...</span>
               </div>
@@ -162,13 +162,13 @@ export default function ChatPage() {
           )}
         </div>
       </ScrollArea>
-      <div className="border-t bg-card rounded-b-lg p-4">
+      <div className="border-t bg-card rounded-b-xl p-4">
         <form onSubmit={handleSubmit} className="relative">
           <Textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Ask about vulnerabilities, products, or findings..."
-            className="pr-20 resize-none bg-secondary/50"
+            className="pr-20 resize-none bg-background"
             rows={1}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
