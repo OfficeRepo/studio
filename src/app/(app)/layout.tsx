@@ -2,6 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import {
   BotMessageSquare,
@@ -50,7 +51,7 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
             <div className="flex items-center gap-2">
               <Button variant="ghost" size="icon" className="h-10 w-10 text-primary" asChild>
                   <Link href="/chat">
-                      <BotMessageSquare className="h-6 w-6" />
+                      <Image src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRvCKHps5VfsykZJte_7fqTNw3ccC_bVn3jzA&s" width={24} height={24} alt="Medtronic Logo" />
                   </Link>
               </Button>
               <h1 className="text-lg font-semibold tracking-tight group-data-[collapsible=icon]:hidden">
