@@ -63,7 +63,7 @@ export async function defectDojoFetchAll<T>(initialRelativeUrl: string): Promise
             
             if (parsed.success) {
                 console.log(`[defectDojoFetchAll] Fetched page with ${parsed.data.results.length} results.`);
-                allResults = allResults.concat(parsed.data.results as T[]);
+                allResults.push(...(parsed.data.results as T[]));
                 currentUrl = parsed.data.next; // This will be null on the last page
                 if (currentUrl) {
                     console.log(`[defectDojoFetchAll] Following next page...`);
@@ -71,7 +71,7 @@ export async function defectDojoFetchAll<T>(initialRelativeUrl: string): Promise
             } else {
                  console.log("[defectDojoFetchAll] Response is not a standard paginated list. Assuming single response.");
                  if (Array.isArray(data)) {
-                    allResults = allResults.concat(data as T[]);
+                    allResults.push(...(data as T[]));
                  } else if (typeof data === 'object' && data !== null) {
                     allResults.push(data as T);
                  }
@@ -177,10 +177,11 @@ export async function getFindings(input: GetFindingsInput) {
             active: String(active),
             limit: '2000', // Fetch large pages for in-memory filtering
             prefetch: 'test,test__test_type,test__engagement,test__engagement__product',
-            ordering: '-cvssv3_score'
         });
 
-        if (severity) queryParams.set('severity', severity);
+        // Add severity filter ONLY if it's not a KEV-specific query.
+        // For KEV queries, we want to find all matches regardless of original severity.
+        if (severity && !isKev) queryParams.set('severity', severity);
         if (cve) queryParams.set('cve', cve);
 
         let requestedProductName = 'All Products';
@@ -198,35 +199,53 @@ export async function getFindings(input: GetFindingsInput) {
         if (componentName) queryParams.set('component_name', componentName);
         
         console.log(`[getFindings] Querying with params: ${queryParams.toString()}`);
-        let allFindings = await defectDojoFetchAll<z.infer<typeof FindingSchema>>(`findings/?${queryParams.toString()}`);
+        const allFindings = await defectDojoFetchAll<z.infer<typeof FindingSchema>>(`findings/?${queryParams.toString()}`);
         console.log(`[getFindings] Fetched a total of ${allFindings.length} findings for initial filtering.`);
-
-        let processedFindings;
-
-        if (isKev) {
-            console.log("[getFindings] KEV flag is true. Enriching findings with CISA KEV data...");
-            const kevMap = await getKevCatalogMap();
-            if (kevMap.size === 0) {
-                 return { message: "Could not fetch the CISA KEV catalog. Please try again later." };
+        
+        // =================================================================
+        // ALWAYS ENRICH WITH KEV INFORMATION
+        // =================================================================
+        console.log("[getFindings] Starting KEV enrichment for all findings...");
+        const kevMap = await getKevCatalogMap();
+        let processedFindings = allFindings.map(f => {
+            const findingCve = f.cve?.toUpperCase();
+            const kevDetails = findingCve ? kevMap.get(findingCve) : null;
+            
+            if (kevDetails) {
+                // If it's a KEV, enrich the finding and upgrade severity
+                return {
+                    ...f,
+                    isKev: true,
+                    kevDetails: kevDetails,
+                    severity: 'Critical' // Automatically upgrade severity
+                };
             }
             
-            processedFindings = allFindings.map(f => {
-                const cveUpper = f.cve?.toUpperCase();
-                const isKevMatch = cveUpper ? kevMap.has(cveUpper) : false;
-                
-                if (isKevMatch) {
-                    // Enrich finding if it's a KEV
-                    return { ...f, severity: 'Critical', isKev: true, kevDetails: kevMap.get(cveUpper!) };
-                }
-                return { ...f, isKev: false };
-            }).filter(f => f.isKev); // Only return KEVs if isKev is true
+            return { ...f, isKev: false, kevDetails: null };
+        });
+        console.log(`[getFindings] Finished KEV enrichment.`);
 
-            console.log(`[getFindings] Found ${processedFindings.length} KEVs after filtering.`);
 
-        } else {
-            // If not a KEV query, just pass through the findings
-            processedFindings = allFindings;
+        // =================================================================
+        // IF THE USER EXPLICITLY ASKED FOR KEVs, FILTER DOWN TO ONLY KEVs
+        // =================================================================
+        if (isKev === true) {
+            processedFindings = processedFindings.filter(f => f.isKev);
+            console.log(`[getFindings] User specifically requested KEVs. Found ${processedFindings.length} after filtering.`);
         }
+
+        // Sort findings by severity (Critical first) and then score
+        processedFindings.sort((a, b) => {
+            const severityOrder = { 'Critical': 0, 'High': 1, 'Medium': 2, 'Low': 3, 'Info': 4 };
+            const severityA = severityOrder[a.severity as keyof typeof severityOrder] ?? 5;
+            const severityB = severityOrder[b.severity as keyof typeof severityOrder] ?? 5;
+            if (severityA !== severityB) return severityA - severityB;
+            
+            // Fallback to CVSS score if severities are equal
+            const scoreA = parseFloat(String(a.cvssv3_score)) || 0;
+            const scoreB = parseFloat(String(b.cvssv3_score)) || 0;
+            return scoreB - scoreA;
+        });
 
 
         if (processedFindings.length === 0) {
