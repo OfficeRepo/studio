@@ -96,7 +96,7 @@ export async function getKpiData(): Promise<KpiData> {
                 componentVulnCounts[componentName].critical++;
             }
             if (severity === 'high') {
-                componentVulnsCounts[componentName].high++;
+                componentVulnCounts[componentName].high++;
             }
         }
     }
