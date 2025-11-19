@@ -69,7 +69,7 @@ export default function ChatPage() {
   }, [messages]);
   
   const suggestions = [
-    "List all products.",
+    "List all products",
     "Show me all KEVs in Carelink Network.",
     "Which component is the riskiest?",
     "How many critical findings are in MCLS?",
@@ -127,7 +127,7 @@ export default function ChatPage() {
                 ) : (
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm]}
-                    className="prose prose-sm max-w-none text-foreground prose-headings:text-foreground prose-p:text-foreground prose-strong:text-foreground prose-li:text-foreground"
+                    className="prose prose-sm max-w-none text-foreground prose-headings:text-foreground prose-p:text-foreground prose-strong:text-foreground prose-li:text-foreground prose-table:text-foreground prose-thead:text-foreground prose-tr:text-foreground prose-th:text-foreground prose-td:text-foreground"
                     components={{
                       p: ({node, ...props}) => <p className="leading-relaxed mb-4 last:mb-0" {...props} />,
                       ul: ({node, ...props}) => <ul className="space-y-2 list-disc list-outside ml-4 mb-4" {...props} />,
@@ -138,6 +138,11 @@ export default function ChatPage() {
                       h2: ({node, ...props}) => <h2 className="text-md font-semibold mb-3" {...props} />,
                       h3: ({node, ...props}) => <h3 className="text-md font-semibold mb-2" {...props} />,
                       hr: ({node, ...props}) => <hr className="my-4 border-border" {...props} />,
+                      table: ({node, ...props}) => <table className="w-full my-4 border-collapse border border-border" {...props} />,
+                      thead: ({node, ...props}) => <thead className="bg-muted" {...props} />,
+                      tr: ({node, ...props}) => <tr className="border-b border-border" {...props} />,
+                      th: ({node, ...props}) => <th className="p-3 text-left font-semibold border-x border-border" {...props} />,
+                      td: ({node, ...props}) => <td className="p-3 border-x border-border" {...props} />,
                     }}
                   >{message.content}</ReactMarkdown>
                 )}

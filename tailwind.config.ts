@@ -9,6 +9,19 @@ export default {
   ],
   theme: {
     extend: {
+      typography: (theme: any) => ({
+        DEFAULT: {
+          css: {
+            color: theme('colors.foreground'),
+            a: {
+              color: theme('colors.primary.DEFAULT'),
+              '&:hover': {
+                color: theme('colors.primary.DEFAULT'),
+              },
+            },
+          },
+        },
+      }),
       fontFamily: {
         body: ['sans-serif'],
         headline: ['sans-serif'],
@@ -104,5 +117,5 @@ export default {
       },
     },
   },
-  plugins: [require('tailwindcss-animate')],
+  plugins: [require('tailwindcss-animate'), require('@tailwindcss/typography')],
 } satisfies Config;
