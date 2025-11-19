@@ -7,9 +7,9 @@
  * - KpiData - The return type for the getKpiData function.
  */
 import {z} from 'zod';
-import { getProductList, defectDojoFetchAll, extractCveFromFinding } from '@/services/defectdojo';
+import { getProductList, defectDojoFetchAll } from '@/services/defectdojo';
 import { getKevCatalogMap } from '@/services/cisa';
-import type { FindingSchema } from '@/services/defectdojo-types';
+import { FindingSchema, extractCveFromFinding } from '@/services/defectdojo-types';
 
 
 const KpiDataSchema = z.object({

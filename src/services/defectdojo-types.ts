@@ -47,3 +47,22 @@ export const FindingSchema = z.object({
     component_version: z.string().nullable().optional(),
     product_name: z.string().optional().nullable(),
 });
+
+/**
+ * Extracts a CVE identifier from a finding from multiple possible fields.
+ */
+export function extractCveFromFinding(f: z.infer<typeof FindingSchema>): string | null {
+  // 1. From cve field
+  if (f.cve && f.cve !== "N/A") return f.cve.toUpperCase();
+
+  // 2. From title
+  const titleMatch = f.title?.match(/CVE-\d{4}-\d{4,7}/i);
+  if (titleMatch) return titleMatch[0].toUpperCase();
+
+  // 3. From description
+  const descriptionMatch = f.description?.match(/CVE-\d{4}-\d{4,7}/i);
+  if (descriptionMatch) return descriptionMatch[0].toUpperCase();
+  
+  // Nothing found
+  return null;
+}
