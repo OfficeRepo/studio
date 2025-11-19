@@ -127,7 +127,7 @@ export default function ChatPage() {
                 ) : (
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm]}
-                    className="prose prose-sm max-w-none"
+                    className="prose prose-sm max-w-none text-foreground"
                     components={{
                       p: ({node, ...props}) => <p className="leading-relaxed mb-4 last:mb-0" {...props} />,
                       ul: ({node, ...props}) => <ul className="space-y-2 list-disc list-outside ml-4 mb-4" {...props} />,
@@ -156,7 +156,7 @@ export default function ChatPage() {
               </Avatar>
               <div className="max-w-lg rounded-lg bg-white shadow-[0_2px_8px_rgba(0,0,0,0.05)] px-4 py-3 text-sm flex items-center gap-2">
                 <CircleDashed className="h-4 w-4 animate-spin" />
-                <span>Thinking...</span>
+                <span className="text-foreground">Thinking...</span>
               </div>
             </div>
           )}
