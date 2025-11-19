@@ -64,7 +64,7 @@ export async function defectDojoFetchAll<T>(initialRelativeUrl: string): Promise
             if (parsed.success) {
                 console.log(`[defectDojoFetchAll] Fetched page with ${parsed.data.results.length} results.`);
                 allResults.push(...(parsed.data.results as T[]));
-                currentUrl = parsed.data.next; // This will be null on the last page
+                currentUrl = parsed.data.next; 
                 if (currentUrl) {
                     console.log(`[defectDojoFetchAll] Following next page...`);
                 }
@@ -75,11 +75,10 @@ export async function defectDojoFetchAll<T>(initialRelativeUrl: string): Promise
                  } else if (typeof data === 'object' && data !== null) {
                     allResults.push(data as T);
                  }
-                 currentUrl = null; // Stop looping if not a paginated response
+                 currentUrl = null;
             }
         } catch (error) {
             console.error(`[defectDojoFetchAll] Failed to fetch page ${currentUrl}:`, error);
-            // Optional: decide whether to stop or continue on error
             currentUrl = null;
         }
     }
@@ -157,6 +156,25 @@ function extractComponentFromTitle(title: string): string {
     return 'unknown';
 }
 
+/**
+ * Extracts a CVE identifier from a finding from multiple possible fields.
+ */
+function extractCveFromFinding(f: z.infer<typeof FindingSchema>): string | null {
+  // 1. From cve field
+  if (f.cve && f.cve !== "N/A") return f.cve.toUpperCase();
+
+  // 2. From title
+  const titleMatch = f.title?.match(/CVE-\d{4}-\d{4,7}/i);
+  if (titleMatch) return titleMatch[0].toUpperCase();
+
+  // 3. From description
+  const descriptionMatch = f.description?.match(/CVE-\d{4}-\d{4,7}/i);
+  if (descriptionMatch) return descriptionMatch[0].toUpperCase();
+  
+  // Nothing found
+  return null;
+}
+
 const GetFindingsInputSchema = z.object({
     productName: z.string().optional(),
     severity: z.string().optional(),
@@ -179,9 +197,7 @@ export async function getFindings(input: GetFindingsInput) {
             prefetch: 'test,test__test_type,test__engagement,test__engagement__product',
         });
 
-        // Add severity filter ONLY if it's not a KEV-specific query.
-        // For KEV queries, we want to find all matches regardless of original severity.
-        if (severity && !isKev) queryParams.set('severity', severity);
+        if (severity) queryParams.set('severity', severity);
         if (cve) queryParams.set('cve', cve);
 
         let requestedProductName = 'All Products';
@@ -205,25 +221,20 @@ export async function getFindings(input: GetFindingsInput) {
         // =================================================================
         // ALWAYS ENRICH WITH KEV INFORMATION
         // =================================================================
-        console.log("[getFindings] Starting KEV enrichment for all findings...");
+        console.log("[getFindings] Enriching all findings with CISA KEV data...");
         const kevMap = await getKevCatalogMap();
         let processedFindings = allFindings.map(f => {
-            const findingCve = f.cve?.toUpperCase();
+            const findingCve = extractCveFromFinding(f);
             const kevDetails = findingCve ? kevMap.get(findingCve) : null;
             
-            if (kevDetails) {
-                // If it's a KEV, enrich the finding and upgrade severity
-                return {
-                    ...f,
-                    isKev: true,
-                    kevDetails: kevDetails,
-                    severity: 'Critical' // Automatically upgrade severity
-                };
-            }
-            
-            return { ...f, isKev: false, kevDetails: null };
+            return {
+                ...f,
+                cve: findingCve, // Overwrite with extracted CVE
+                isKev: !!kevDetails,
+                kevDetails: kevDetails || null,
+                severity: kevDetails ? 'Critical' : f.severity // ALWAYS upgrade severity for KEVs
+            };
         });
-        console.log(`[getFindings] Finished KEV enrichment.`);
 
 
         // =================================================================
@@ -241,7 +252,6 @@ export async function getFindings(input: GetFindingsInput) {
             const severityB = severityOrder[b.severity as keyof typeof severityOrder] ?? 5;
             if (severityA !== severityB) return severityA - severityB;
             
-            // Fallback to CVSS score if severities are equal
             const scoreA = parseFloat(String(a.cvssv3_score)) || 0;
             const scoreB = parseFloat(String(b.cvssv3_score)) || 0;
             return scoreB - scoreA;
@@ -270,7 +280,7 @@ export async function getFindings(input: GetFindingsInput) {
                 cve: f.cve || 'N/A',
                 cwe: f.cwe ? `CWE-${f.cwe}` : 'Unknown',
                 cvssv3_score: f.cvssv3_score || 'N/A',
-                severity: f.severity, // This will be upgraded for KEVs
+                severity: f.severity,
                 tool: (f.test && typeof f.test === 'object' && f.test.test_type) ? f.test.test_type.name : 'Unknown',
                 date: f.date,
             };
@@ -302,7 +312,7 @@ export async function analyzeVulnerabilityData(analysisType: 'component_risk' | 
         const queryParams = new URLSearchParams({
             active: 'true',
             duplicate: 'false',
-            limit: '2000', // Fetch a large batch for analysis
+            limit: '2000',
             prefetch: 'test,test__test_type,test__engagement,test__engagement__product'
         });
         
@@ -556,3 +566,5 @@ export async function getTotalFindingCount(productName?: string, severity?: stri
         return { error: `Failed to retrieve total finding count: ${errorMessage}` };
     }
 }
+
+    
