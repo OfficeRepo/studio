@@ -51,7 +51,7 @@ async function defectDojoFetch(url: string, options: RequestInit = {}) {
  * Fetches all results from a paginated DefectDojo endpoint by following the 'next' links.
  */
 export async function defectDojoFetchAll<T>(initialRelativeUrl: string): Promise<T[]> {
-    const allResults: T[] = [];
+    let allResults: T[] = [];
     let currentUrl: string | null = initialRelativeUrl;
     
     console.log(`[defectDojoFetchAll] Starting full fetch for: ${initialRelativeUrl}`);
@@ -63,17 +63,16 @@ export async function defectDojoFetchAll<T>(initialRelativeUrl: string): Promise
             
             if (parsed.success) {
                 console.log(`[defectDojoFetchAll] Fetched page with ${parsed.data.results.length} results.`);
-                allResults.push(...(parsed.data.results as T[]));
-                currentUrl = parsed.data.next;
+                allResults = allResults.concat(parsed.data.results as T[]);
+                currentUrl = parsed.data.next; // This will be null on the last page
                 if (currentUrl) {
                     console.log(`[defectDojoFetchAll] Following next page...`);
                 }
             } else {
-                 console.log("[defectDojoFetchAll] Response is not a standard paginated list. Processing as a single array.");
+                 console.log("[defectDojoFetchAll] Response is not a standard paginated list. Assuming single response.");
                  if (Array.isArray(data)) {
-                    allResults.push(...(data as T[]));
+                    allResults = allResults.concat(data as T[]);
                  } else if (typeof data === 'object' && data !== null) {
-                    // Handle cases where a single object is returned
                     allResults.push(data as T);
                  }
                  currentUrl = null; // Stop looping if not a paginated response
@@ -202,24 +201,31 @@ export async function getFindings(input: GetFindingsInput) {
         let allFindings = await defectDojoFetchAll<z.infer<typeof FindingSchema>>(`findings/?${queryParams.toString()}`);
         console.log(`[getFindings] Fetched a total of ${allFindings.length} findings for initial filtering.`);
 
-        let processedFindings = allFindings;
+        let processedFindings;
 
         if (isKev) {
-            console.log("[getFindings] KEV flag is true. Filtering for CISA KEVs.");
+            console.log("[getFindings] KEV flag is true. Enriching findings with CISA KEV data...");
             const kevMap = await getKevCatalogMap();
             if (kevMap.size === 0) {
                  return { message: "Could not fetch the CISA KEV catalog. Please try again later." };
             }
             
             processedFindings = allFindings.map(f => {
-                const isKevMatch = f.cve ? kevMap.has(f.cve.toUpperCase()) : false;
+                const cveUpper = f.cve?.toUpperCase();
+                const isKevMatch = cveUpper ? kevMap.has(cveUpper) : false;
+                
                 if (isKevMatch) {
-                    // Upgrade severity to Critical if it's a KEV
-                    return { ...f, severity: 'Critical', isKev: true, kevDetails: kevMap.get(f.cve!.toUpperCase()) };
+                    // Enrich finding if it's a KEV
+                    return { ...f, severity: 'Critical', isKev: true, kevDetails: kevMap.get(cveUpper!) };
                 }
                 return { ...f, isKev: false };
-            }).filter(f => f.isKev);
+            }).filter(f => f.isKev); // Only return KEVs if isKev is true
+
             console.log(`[getFindings] Found ${processedFindings.length} KEVs after filtering.`);
+
+        } else {
+            // If not a KEV query, just pass through the findings
+            processedFindings = allFindings;
         }
 
 
