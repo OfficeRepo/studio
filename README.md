@@ -38,16 +38,19 @@ Building a truly intelligent AI assistant is an iterative process. Our journey w
 
 Initially, the chatbot struggled with fundamental queries. It would fail to retrieve data, give incorrect "no results" answers, or crash entirely. Through a persistent cycle of user feedback, debugging, and architectural refinement, we systematically addressed each failure:
 
-1.  **The Problem of Inconsistent Data:** Early versions of the chatbot crashed because they made rigid assumptions about the API response structure. For example, it assumed every `finding` would have a `test` object, or that a `cvssv3_score` would always be a number.
-    *   **The Fix:** We rewrote our data validation schemas (Zod schemas) to be more flexible, correctly handling `null` values, optional fields, and union types (e.g., a field that could be an `object` or a `number`). This made the application resilient to the real-world inconsistencies of API data.
+1.  **Intelligent Response Formatting:** The chatbot was too rigid, responding to every query with a formal, executive-level report. This was unhelpful for simple questions.
+    *   **The Fix:** We implemented smarter response logic. The AI now distinguishes between simple questions (e.g., "list all tools") and complex analysis ("generate a risk report"). It provides direct, conversational answers for simple queries and reserves the full, structured report for deep analysis, making the interaction far more natural.
 
-2.  **The Challenge of API Logic:** The chatbot was initially unable to answer questions about specific tools (e.g., "findings from SonarQube") because it was using a flawed, hardcoded mapping.
-    *   **The Fix:** We implemented a dynamic, robust approach. The application now fetches the list of available tools directly from the `/api/v2/test_types/` endpoint and uses the correct API parameters (`test__test_type__name`) to filter findings. This ensures tool-based queries are always accurate.
+2.  **Unreadable UI and Messy Data:** When the chatbot returned data, it was often in a poorly formatted, unreadable block of text. Markdown tables were not rendering correctly, making lists of vulnerabilities useless.
+    *   **The Fix:** We integrated `react-markdown` with table support (`remark-gfm`) into the UI. Now, all Markdown responses, especially tables, are rendered beautifully. This transforms messy data into clean, professional, and easy-to-read lists.
 
-3.  **The Inefficiency of Data Analysis:** The KPI Dashboard was incredibly slow, making hundreds of unnecessary API calls. Complex analytical queries were failing because the analysis engine couldn't properly group and compare data.
+3.  **Lack of Actionable Dashboards:** The KPI Dashboard was slow, buggy, and didn't highlight the most critical information. The "Top Vulnerable Products" and "Product Deep Dive" features were broken.
+    *   **The Fix:** We completely overhauled the KPI Dashboard. We removed the non-working sections and replaced them with two new, highly-visual components: a **"KEV Overview"** donut chart and a **"Top 5 Riskiest Components"** bar chart. This provides immediate, actionable intelligence about active exploits and high-risk components.
+
+4.  **The Inefficiency of Data Analysis:** The backend was incredibly slow and prone to crashes, making hundreds of unnecessary API calls. Complex analytical queries were failing because the analysis engine couldn't properly group and compare data.
     *   **The Fix:** We completely refactored the data analysis engine. The KPI dashboard now uses a bulk-fetching strategy, grabbing all necessary data in a few efficient calls. The `analyze_vulnerability_data` function was overhauled to correctly perform complex grouping and cross-product analysis, finally unlocking the chatbot's most powerful analytical features.
 
-This journey highlights a core principle of building with AI: the intelligence is only as good as the data you feed it. By building a robust, resilient, and efficient data-handling layer, we transformed DojoGPT from a frustrating prototype into a powerful and reliable tool.
+This journey highlights a core principle of building with AI: the intelligence is only as good as the data you feed it and the clarity with which it's presented. By building a robust data-handling layer and a clean UI, we transformed DojoGPT from a frustrating prototype into a powerful and reliable tool.
 
 ---
 
