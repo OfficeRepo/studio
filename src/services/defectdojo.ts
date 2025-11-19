@@ -11,10 +11,10 @@ import { getKevCatalogMap } from './cisa';
 const API_URL = process.env.DEFECTDOJO_API_URL;
 const API_KEY = process.env.DEFECTDOJO_API_KEY;
 
-const FindingListSchema = z.object({
+const PaginatedResponseSchema = z.object({
     count: z.number(),
     next: z.string().nullable(),
-    results: z.array(FindingSchema),
+    results: z.array(z.any()), // We'll parse the results array with a specific schema later
 });
 
 
@@ -49,6 +49,7 @@ async function defectDojoFetch(url: string, options: RequestInit = {}) {
 
 /**
  * Fetches all results from a paginated DefectDojo endpoint by following the 'next' links.
+ * This is specifically for finding lists.
  */
 export async function defectDojoFetchAll<T>(initialRelativeUrl: string): Promise<T[]> {
     let allResults: T[] = [];
@@ -59,7 +60,7 @@ export async function defectDojoFetchAll<T>(initialRelativeUrl: string): Promise
     while (currentUrl) {
         try {
             const data = await defectDojoFetch(currentUrl);
-            const parsed = FindingListSchema.safeParse(data);
+            const parsed = PaginatedResponseSchema.extend({ results: z.array(FindingSchema) }).safeParse(data);
             
             if (parsed.success) {
                 console.log(`[defectDojoFetchAll] Fetched page with ${parsed.data.results.length} results.`);
@@ -69,17 +70,12 @@ export async function defectDojoFetchAll<T>(initialRelativeUrl: string): Promise
                     console.log(`[defectDojoFetchAll] Following next page...`);
                 }
             } else {
-                 console.log("[defectDojoFetchAll] Response is not a standard paginated list. Assuming single response.");
-                 if (Array.isArray(data)) {
-                    allResults.push(...(data as T[]));
-                 } else if (typeof data === 'object' && data !== null) {
-                    allResults.push(data as T);
-                 }
+                 console.warn("[defectDojoFetchAll] Response did not match paginated finding schema. Stopping.", parsed.error.message);
                  currentUrl = null;
             }
         } catch (error) {
             console.error(`[defectDojoFetchAll] Failed to fetch page ${currentUrl}:`, error);
-            currentUrl = null;
+            currentUrl = null; // Stop pagination on error
         }
     }
     
@@ -100,7 +96,9 @@ export async function getProductInfoByName(productName: string): Promise<{ id: n
     
     try {
         console.log(`[getProductInfoByName] Product '${productName}' not in cache, querying API...`);
-        const products = await defectDojoFetchAll<z.infer<typeof ProductSchema>>(`products/?limit=1000`);
+        const data = await defectDojoFetch(`products/?limit=1000`);
+        const products = PaginatedResponseSchema.extend({ results: z.array(ProductSchema) }).parse(data).results;
+
         const foundProduct = products.find(p => 
             p.name.toLowerCase().replace(/[\s\-_]/g, '') === lowerProductName || 
             String(p.id) === lowerProductName
@@ -119,8 +117,15 @@ export async function getProductInfoByName(productName: string): Promise<{ id: n
 
 export async function getProductList(): Promise<{id: number, name: string}[]> {
     try {
-        const products = await defectDojoFetchAll<z.infer<typeof ProductSchema>>('products/?limit=200');
-        const productList = products.map(p => ({ id: p.id, name: p.name })).filter(p => !!p.name);
+        const data = await defectDojoFetch('products/?limit=200');
+        const parsedResponse = PaginatedResponseSchema.extend({ results: z.array(ProductSchema) }).safeParse(data);
+
+        if (!parsedResponse.success) {
+            console.error("Failed to parse product list response", parsedResponse.error);
+            return [];
+        }
+
+        const productList = parsedResponse.data.results.map(p => ({ id: p.id, name: p.name })).filter(p => !!p.name);
         productList.sort((a, b) => a.name.localeCompare(b.name));
         return productList;
     } catch (error) {
@@ -131,8 +136,15 @@ export async function getProductList(): Promise<{id: number, name: string}[]> {
 
 export async function getToolList(): Promise<string[]> {
     try {
-        const tools = await defectDojoFetchAll<z.infer<typeof TestTypeSchema>>('test_types/?limit=200');
-        const toolList = tools.map(t => t.name).filter(name => !!name);
+        const data = await defectDojoFetch('test_types/?limit=200');
+        const parsedResponse = PaginatedResponseSchema.extend({ results: z.array(TestTypeSchema) }).safeParse(data);
+        
+        if (!parsedResponse.success) {
+            console.error("Failed to parse tool list response", parsedResponse.error);
+            return [];
+        }
+
+        const toolList = parsedResponse.data.results.map(t => t.name).filter(name => !!name);
         toolList.sort((a, b) => a.localeCompare(b));
         return toolList;
     } catch (error) {
