@@ -119,7 +119,7 @@ export default function ChatPage() {
                   'max-w-xl rounded-lg px-4 py-3 text-sm',
                   message.role === 'user'
                     ? 'bg-primary text-primary-foreground'
-                    : 'bg-white text-foreground shadow-[0_2px_8px_rgba(0,0,0,0.05)]'
+                    : 'bg-background text-foreground shadow-sm'
                 )}
               >
                 {message.role === 'user' ? (
@@ -127,7 +127,7 @@ export default function ChatPage() {
                 ) : (
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm]}
-                    className="prose prose-sm max-w-none text-foreground"
+                    className="prose prose-sm max-w-none text-foreground prose-headings:text-foreground prose-p:text-foreground prose-strong:text-foreground prose-li:text-foreground"
                     components={{
                       p: ({node, ...props}) => <p className="leading-relaxed mb-4 last:mb-0" {...props} />,
                       ul: ({node, ...props}) => <ul className="space-y-2 list-disc list-outside ml-4 mb-4" {...props} />,
@@ -154,7 +154,7 @@ export default function ChatPage() {
                <Avatar className="h-8 w-8 border">
                 <AvatarFallback><Bot className="h-5 w-5 text-primary" /></AvatarFallback>
               </Avatar>
-              <div className="max-w-lg rounded-lg bg-white shadow-[0_2px_8px_rgba(0,0,0,0.05)] px-4 py-3 text-sm flex items-center gap-2">
+              <div className="max-w-lg rounded-lg bg-background shadow-sm px-4 py-3 text-sm flex items-center gap-2">
                 <CircleDashed className="h-4 w-4 animate-spin" />
                 <span className="text-foreground">Thinking...</span>
               </div>
