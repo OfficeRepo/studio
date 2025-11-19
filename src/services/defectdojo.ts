@@ -159,7 +159,7 @@ function extractComponentFromTitle(title: string): string {
 /**
  * Extracts a CVE identifier from a finding from multiple possible fields.
  */
-function extractCveFromFinding(f: z.infer<typeof FindingSchema>): string | null {
+export function extractCveFromFinding(f: z.infer<typeof FindingSchema>): string | null {
   // 1. From cve field
   if (f.cve && f.cve !== "N/A") return f.cve.toUpperCase();
 
@@ -197,7 +197,6 @@ export async function getFindings(input: GetFindingsInput) {
             prefetch: 'test,test__test_type,test__engagement,test__engagement__product',
         });
 
-        if (severity) queryParams.set('severity', severity);
         if (cve) queryParams.set('cve', cve);
 
         let requestedProductName = 'All Products';
@@ -221,7 +220,7 @@ export async function getFindings(input: GetFindingsInput) {
         // =================================================================
         // ALWAYS ENRICH WITH KEV INFORMATION
         // =================================================================
-        console.log("[getFindings] Enriching all findings with CISA KEV data...");
+        console.log("[getFindings] KEV flag is true. Enriching findings with CISA KEV data...");
         const kevMap = await getKevCatalogMap();
         let processedFindings = allFindings.map(f => {
             const findingCve = extractCveFromFinding(f);
@@ -242,7 +241,10 @@ export async function getFindings(input: GetFindingsInput) {
         // =================================================================
         if (isKev === true) {
             processedFindings = processedFindings.filter(f => f.isKev);
-            console.log(`[getFindings] User specifically requested KEVs. Found ${processedFindings.length} after filtering.`);
+            console.log(`[getFindings] Found ${processedFindings.length} KEVs after filtering.`);
+        } else if (severity) {
+            // Also filter by severity if it was provided and we are not exclusively looking for KEVs
+            processedFindings = processedFindings.filter(f => f.severity === severity);
         }
 
         // Sort findings by severity (Critical first) and then score
@@ -514,8 +516,9 @@ export async function analyzeVulnerabilityData(analysisType: 'component_risk' | 
         if (analysisType === 'cve_analysis') {
             const cveCounts: Record<string, number> = {};
             for (const f of findingsWithDetails) {
-                if (f.cve) {
-                    cveCounts[f.cve] = (cveCounts[f.cve] || 0) + 1;
+                const cve = extractCveFromFinding(f);
+                if (cve) {
+                    cveCounts[cve] = (cveCounts[cve] || 0) + 1;
                 }
             }
 
