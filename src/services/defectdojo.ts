@@ -51,38 +51,37 @@ async function defectDojoFetch(url: string, options: RequestInit = {}) {
  * Fetches all results from a paginated DefectDojo endpoint by following the 'next' links.
  */
 export async function defectDojoFetchAll<T>(initialRelativeUrl: string): Promise<T[]> {
-    let allResults: T[] = [];
+    const allResults: T[] = [];
     let currentUrl: string | null = initialRelativeUrl;
     
     console.log(`[defectDojoFetchAll] Starting full fetch for: ${initialRelativeUrl}`);
     
     while (currentUrl) {
-        const data = await defectDojoFetch(currentUrl);
-        const paginatedResponseSchema = z.object({
-            count: z.number(),
-            next: z.string().nullable(),
-            results: z.array(z.any()),
-        });
-
-        const parsed = paginatedResponseSchema.safeParse(data);
-        
-        if (parsed.success) {
-            console.log(`[defectDojoFetchAll] Fetched page with ${parsed.data.results.length} results. Total so far: ${allResults.length + parsed.data.results.length}`);
-            allResults = allResults.concat(parsed.data.results as T[]);
-            currentUrl = parsed.data.next;
-            if (currentUrl) {
-                console.log(`[defectDojoFetchAll] Following next page: ${currentUrl}`);
+        try {
+            const data = await defectDojoFetch(currentUrl);
+            const parsed = FindingListSchema.safeParse(data);
+            
+            if (parsed.success) {
+                console.log(`[defectDojoFetchAll] Fetched page with ${parsed.data.results.length} results.`);
+                allResults.push(...(parsed.data.results as T[]));
+                currentUrl = parsed.data.next;
+                if (currentUrl) {
+                    console.log(`[defectDojoFetchAll] Following next page...`);
+                }
             } else {
-                console.log(`[defectDojoFetchAll] No more pages. Finished fetching.`);
+                 console.log("[defectDojoFetchAll] Response is not a standard paginated list. Processing as a single array.");
+                 if (Array.isArray(data)) {
+                    allResults.push(...(data as T[]));
+                 } else if (typeof data === 'object' && data !== null) {
+                    // Handle cases where a single object is returned
+                    allResults.push(data as T);
+                 }
+                 currentUrl = null; // Stop looping if not a paginated response
             }
-        } else {
-             console.log("[defectDojoFetchAll] Response is not a paginated list. Returning data as is.");
-             if (Array.isArray(data)) {
-                allResults.push(...data as T[]);
-             } else if(typeof data === 'object' && data !== null) {
-                allResults.push(data as T);
-             }
-             currentUrl = null;
+        } catch (error) {
+            console.error(`[defectDojoFetchAll] Failed to fetch page ${currentUrl}:`, error);
+            // Optional: decide whether to stop or continue on error
+            currentUrl = null;
         }
     }
     
@@ -167,23 +166,22 @@ const GetFindingsInputSchema = z.object({
     toolName: z.string().optional(),
     cve: z.string().optional(),
     componentName: z.string().optional(),
+    isKev: z.boolean().optional(),
 });
 type GetFindingsInput = z.infer<typeof GetFindingsInputSchema>;
 
 export async function getFindings(input: GetFindingsInput) {
-    const { productName, severity, active, limit, toolName, cve, componentName } = GetFindingsInputSchema.parse(input);
+    const { productName, severity, active, limit, toolName, cve, componentName, isKev } = GetFindingsInputSchema.parse(input);
     try {
         const queryParams = new URLSearchParams({
             duplicate: 'false',
             active: String(active),
-            limit: String(limit),
+            limit: '2000', // Fetch large pages for in-memory filtering
             prefetch: 'test,test__test_type,test__engagement,test__engagement__product',
             ordering: '-cvssv3_score'
         });
 
-        if (severity) {
-            queryParams.set('severity', severity);
-        }
+        if (severity) queryParams.set('severity', severity);
         if (cve) queryParams.set('cve', cve);
 
         let requestedProductName = 'All Products';
@@ -197,49 +195,74 @@ export async function getFindings(input: GetFindingsInput) {
             }
         }
         
-        if (toolName) {
-             queryParams.set('test__test_type__name', toolName);
-        }
-        
-        if (componentName) {
-            queryParams.set('component_name', componentName);
-        }
+        if (toolName) queryParams.set('test__test_type__name', toolName);
+        if (componentName) queryParams.set('component_name', componentName);
         
         console.log(`[getFindings] Querying with params: ${queryParams.toString()}`);
-        const data = await defectDojoFetch(`findings/?${queryParams.toString()}`);
-        const parsedFindings = FindingListSchema.parse(data);
+        let allFindings = await defectDojoFetchAll<z.infer<typeof FindingSchema>>(`findings/?${queryParams.toString()}`);
+        console.log(`[getFindings] Fetched a total of ${allFindings.length} findings for initial filtering.`);
 
-        if (parsedFindings.results.length === 0) {
-            const criteria = [productName, severity, toolName, cve, componentName].filter(Boolean).join(', ');
+        let processedFindings = allFindings;
+
+        if (isKev) {
+            console.log("[getFindings] KEV flag is true. Filtering for CISA KEVs.");
+            const kevMap = await getKevCatalogMap();
+            if (kevMap.size === 0) {
+                 return { message: "Could not fetch the CISA KEV catalog. Please try again later." };
+            }
+            
+            processedFindings = allFindings.map(f => {
+                const isKevMatch = f.cve ? kevMap.has(f.cve.toUpperCase()) : false;
+                if (isKevMatch) {
+                    // Upgrade severity to Critical if it's a KEV
+                    return { ...f, severity: 'Critical', isKev: true, kevDetails: kevMap.get(f.cve!.toUpperCase()) };
+                }
+                return { ...f, isKev: false };
+            }).filter(f => f.isKev);
+            console.log(`[getFindings] Found ${processedFindings.length} KEVs after filtering.`);
+        }
+
+
+        if (processedFindings.length === 0) {
+            const criteria = [productName, severity, toolName, cve, componentName, isKev ? 'KEV' : null].filter(Boolean).join(', ');
             return { message: `No active vulnerabilities were found for the specified criteria: ${criteria}.` };
         }
         
         const allProductsList = await getProductList();
         const productMap = new Map(allProductsList.map(p => [p.id, p.name]));
 
+        const finalFindings = processedFindings.slice(0, limit).map(f => {
+            let findingProduct = 'Unknown Product';
+            if (f.test && typeof f.test === 'object' && f.test.engagement && typeof f.test.engagement === 'object' && f.test.engagement.product) {
+                findingProduct = productMap.get(f.test.engagement.product) ?? 'Unknown Product';
+            }
+            
+            const findingData: any = {
+                id: f.id,
+                title: f.title,
+                component: f.component_name || extractComponentFromTitle(f.title) || 'unknown',
+                product: findingProduct,
+                cve: f.cve || 'N/A',
+                cwe: f.cwe ? `CWE-${f.cwe}` : 'Unknown',
+                cvssv3_score: f.cvssv3_score || 'N/A',
+                severity: f.severity, // This will be upgraded for KEVs
+                tool: (f.test && typeof f.test === 'object' && f.test.test_type) ? f.test.test_type.name : 'Unknown',
+                date: f.date,
+            };
+
+            if(f.isKev && f.kevDetails) {
+                findingData.remediation = f.kevDetails.requiredAction;
+                findingData.kev_due_date = f.kevDetails.dueDate;
+            }
+
+            return findingData;
+        });
+
         return {
-            totalCount: parsedFindings.count,
-            showing: parsedFindings.results.length,
+            totalCount: processedFindings.length,
+            showing: finalFindings.length,
             product: requestedProductName,
-            findings: parsedFindings.results.map(f => {
-                let findingProduct = 'Unknown Product';
-                if (f.test && typeof f.test === 'object' && f.test.engagement && typeof f.test.engagement === 'object' && f.test.engagement.product) {
-                    findingProduct = productMap.get(f.test.engagement.product) ?? 'Unknown Product';
-                }
-                
-                return {
-                    id: f.id,
-                    title: f.title,
-                    component: f.component_name || extractComponentFromTitle(f.title) || 'unknown',
-                    product: findingProduct,
-                    cve: f.cve || 'N/A',
-                    cwe: f.cwe ? `CWE-${f.cwe}` : 'Unknown',
-                    cvssv3_score: f.cvssv3_score || 'N/A',
-                    severity: f.severity,
-                    tool: (f.test && typeof f.test === 'object' && f.test.test_type) ? f.test.test_type.name : 'Unknown',
-                    date: f.date,
-                }
-            }),
+            findings: finalFindings,
         };
 
     } catch (error) {
@@ -303,7 +326,7 @@ export async function analyzeVulnerabilityData(analysisType: 'component_risk' | 
         const findingsWithDetails = allFindings.map(f => {
             let findingProductName = 'Unknown Product';
             if (f.test && typeof f.test === 'object' && f.test.engagement && typeof f.test.engagement === 'object' && f.test.engagement.product) {
-                findingProductName = productMap.get(f.test.engagement.product) ?? 'Unknown Product';
+                findingProductName = productMap.get(f.test.engagement.product) ??- 'Unknown Product';
             }
             return {
                 ...f,
@@ -506,92 +529,5 @@ export async function getTotalFindingCount(productName?: string, severity?: stri
         const errorMessage = error instanceof Error ? error.message : String(error);
         console.error(`[getTotalFindingCount] Error: ${errorMessage}`);
         return { error: `Failed to retrieve total finding count: ${errorMessage}` };
-    }
-}
-
-/**
- * Finds vulnerabilities from the CISA KEV catalog within DefectDojo findings.
- * It fetches all relevant findings from DefectDojo, then filters them in-memory
- * against the CISA KEV catalog. If a vulnerability is a KEV, its severity
- * is automatically upgraded to 'Critical'.
- */
-export async function getKevFindings(productName?: string, limit: number = 25) {
-    try {
-        console.log(`[getKevFindings] Starting KEV analysis for product: ${productName || 'All Products'}`);
-        const [kevMap, allProducts] = await Promise.all([
-            getKevCatalogMap(),
-            getProductList(),
-        ]);
-
-        if (kevMap.size === 0) {
-            return { message: "Could not fetch the CISA KEV catalog. Please try again later." };
-        }
-        
-        const productMap = new Map(allProducts.map(p => [p.id, p.name]));
-
-        const queryParams = new URLSearchParams({
-            active: 'true',
-            duplicate: 'false',
-            limit: '2000', // This will be handled by defectDojoFetchAll
-            prefetch: 'test,test__engagement,test__engagement__product',
-        });
-
-        let requestedProductName = 'All Products';
-        if (productName) {
-            const productInfo = await getProductInfoByName(productName);
-            if (productInfo) {
-                queryParams.set('test__engagement__product', String(productInfo.id));
-                requestedProductName = productInfo.name;
-            } else {
-                return { message: `Product '${productName}' not found.` };
-            }
-        }
-        
-        // Fetch ALL findings for the scope, then filter locally
-        const allFindings = await defectDojoFetchAll<z.infer<typeof FindingSchema>>(`findings/?${queryParams.toString()}`);
-        
-        console.log(`[getKevFindings] Analyzing ${allFindings.length} total findings for KEVs.`);
-
-        const matchedKevs = allFindings
-            .map(f => {
-                const isKev = f.cve ? kevMap.has(f.cve.toUpperCase()) : false;
-                if (isKev) {
-                    // Upgrade severity to Critical if it's a KEV
-                    return { ...f, severity: 'Critical', isKev: true };
-                }
-                return { ...f, isKev: false };
-            })
-            .filter(f => f.isKev) // Keep only the findings that are KEVs
-            .map(f => {
-                const kevDetails = kevMap.get(f.cve!.toUpperCase())!;
-                const findingProduct = (f.test && typeof f.test === 'object' && f.test.engagement?.product) 
-                    ? productMap.get(f.test.engagement.product) : 'Unknown Product';
-                
-                return {
-                    id: f.id,
-                    title: f.title,
-                    cve: f.cve!,
-                    severity: f.severity, // This will be 'Critical'
-                    product: findingProduct,
-                    remediation: kevDetails.requiredAction,
-                    kev_due_date: kevDetails.dueDate,
-                };
-            })
-            .sort((a,b) => new Date(a.kev_due_date).getTime() - new Date(b.kev_due_date).getTime());
-        
-        if (matchedKevs.length === 0) {
-            console.log(`[getKevFindings] No CISA KEVs found in ${requestedProductName}.`);
-            return { message: `No CISA KEVs found in ${requestedProductName}.` };
-        }
-        
-        console.log(`[getKevFindings] Found ${matchedKevs.length} KEV(s) in ${requestedProductName}.`);
-        return {
-            message: `Found ${matchedKevs.length} CISA KEV(s) in ${requestedProductName}.`,
-            findings: matchedKevs.slice(0, limit),
-        };
-
-    } catch (error) {
-        console.error(`[getKevFindings] An exception occurred. Details:`, error);
-        return { error: `An exception occurred during KEV analysis. Details: ${error instanceof Error ? error.message : String(error)}` };
     }
 }
