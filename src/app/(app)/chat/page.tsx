@@ -69,10 +69,10 @@ export default function ChatPage() {
   }, [messages]);
   
   const suggestions = [
-    "List all critical vulnerabilities.",
-    "Show me findings for product 'X'.",
-    "What are the most common CVEs?",
-    "Generate a summary of open issues."
+    "List all products.",
+    "Show me all KEVs in Carelink Network.",
+    "Which component is the riskiest?",
+    "How many critical findings are in MCLS?",
   ];
 
   return (
@@ -119,7 +119,7 @@ export default function ChatPage() {
                   'max-w-xl rounded-lg px-4 py-3 text-sm',
                   message.role === 'user'
                     ? 'bg-primary text-primary-foreground'
-                    : 'bg-background text-foreground shadow-sm'
+                    : 'bg-card text-card-foreground shadow-sm'
                 )}
               >
                 {message.role === 'user' ? (
