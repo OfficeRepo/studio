@@ -54,7 +54,7 @@ export async function defectDojoFetchAll<T>(initialRelativeUrl: string): Promise
     let allResults: T[] = [];
     let currentUrl: string | null = initialRelativeUrl;
     
-    console.log(`[defectDojoFetchAll] Starting fetch for: ${initialRelativeUrl}`);
+    console.log(`[defectDojoFetchAll] Starting full fetch for: ${initialRelativeUrl}`);
     
     while (currentUrl) {
         const data = await defectDojoFetch(currentUrl);
@@ -67,11 +67,11 @@ export async function defectDojoFetchAll<T>(initialRelativeUrl: string): Promise
         const parsed = paginatedResponseSchema.safeParse(data);
         
         if (parsed.success) {
-            console.log(`[defectDojoFetchAll] Fetched ${parsed.data.results.length} results. Total so far: ${allResults.length + parsed.data.results.length}`);
-            allResults.push(...parsed.data.results); // Append results from the current page
-            currentUrl = parsed.data.next; // Set the URL for the next iteration
+            console.log(`[defectDojoFetchAll] Fetched page with ${parsed.data.results.length} results. Total so far: ${allResults.length + parsed.data.results.length}`);
+            allResults = allResults.concat(parsed.data.results as T[]);
+            currentUrl = parsed.data.next;
             if (currentUrl) {
-                console.log(`[defectDojoFetchAll] Next page found: ${currentUrl}`);
+                console.log(`[defectDojoFetchAll] Following next page: ${currentUrl}`);
             } else {
                 console.log(`[defectDojoFetchAll] No more pages. Finished fetching.`);
             }
@@ -206,8 +206,7 @@ export async function getFindings(input: GetFindingsInput) {
         }
         
         console.log(`[getFindings] Querying with params: ${queryParams.toString()}`);
-        const endpoint = `findings/?${queryParams.toString()}`;
-        const data = await defectDojoFetch(endpoint);
+        const data = await defectDojoFetch(`findings/?${queryParams.toString()}`);
         const parsedFindings = FindingListSchema.parse(data);
 
         if (parsedFindings.results.length === 0) {
@@ -512,11 +511,13 @@ export async function getTotalFindingCount(productName?: string, severity?: stri
 
 /**
  * Finds vulnerabilities from the CISA KEV catalog within DefectDojo findings.
- * This is done by fetching all relevant findings and filtering them in-memory
- * to avoid creating a URL that is too long.
+ * It fetches all relevant findings from DefectDojo, then filters them in-memory
+ * against the CISA KEV catalog. If a vulnerability is a KEV, its severity
+ * is automatically upgraded to 'Critical'.
  */
 export async function getKevFindings(productName?: string, limit: number = 25) {
     try {
+        console.log(`[getKevFindings] Starting KEV analysis for product: ${productName || 'All Products'}`);
         const [kevMap, allProducts] = await Promise.all([
             getKevCatalogMap(),
             getProductList(),
@@ -525,12 +526,13 @@ export async function getKevFindings(productName?: string, limit: number = 25) {
         if (kevMap.size === 0) {
             return { message: "Could not fetch the CISA KEV catalog. Please try again later." };
         }
+        
         const productMap = new Map(allProducts.map(p => [p.id, p.name]));
 
         const queryParams = new URLSearchParams({
             active: 'true',
             duplicate: 'false',
-            limit: '2000', // Set a high limit for each page
+            limit: '2000', // This will be handled by defectDojoFetchAll
             prefetch: 'test,test__engagement,test__engagement__product',
         });
 
@@ -545,11 +547,21 @@ export async function getKevFindings(productName?: string, limit: number = 25) {
             }
         }
         
-        // Fetch all findings for the scope, then filter locally
+        // Fetch ALL findings for the scope, then filter locally
         const allFindings = await defectDojoFetchAll<z.infer<typeof FindingSchema>>(`findings/?${queryParams.toString()}`);
         
+        console.log(`[getKevFindings] Analyzing ${allFindings.length} total findings for KEVs.`);
+
         const matchedKevs = allFindings
-            .filter(f => f.cve && kevMap.has(f.cve.toUpperCase())) // Filter in-memory
+            .map(f => {
+                const isKev = f.cve ? kevMap.has(f.cve.toUpperCase()) : false;
+                if (isKev) {
+                    // Upgrade severity to Critical if it's a KEV
+                    return { ...f, severity: 'Critical', isKev: true };
+                }
+                return { ...f, isKev: false };
+            })
+            .filter(f => f.isKev) // Keep only the findings that are KEVs
             .map(f => {
                 const kevDetails = kevMap.get(f.cve!.toUpperCase())!;
                 const findingProduct = (f.test && typeof f.test === 'object' && f.test.engagement?.product) 
@@ -559,7 +571,7 @@ export async function getKevFindings(productName?: string, limit: number = 25) {
                     id: f.id,
                     title: f.title,
                     cve: f.cve!,
-                    severity: f.severity,
+                    severity: f.severity, // This will be 'Critical'
                     product: findingProduct,
                     remediation: kevDetails.requiredAction,
                     kev_due_date: kevDetails.dueDate,
@@ -568,9 +580,11 @@ export async function getKevFindings(productName?: string, limit: number = 25) {
             .sort((a,b) => new Date(a.kev_due_date).getTime() - new Date(b.kev_due_date).getTime());
         
         if (matchedKevs.length === 0) {
+            console.log(`[getKevFindings] No CISA KEVs found in ${requestedProductName}.`);
             return { message: `No CISA KEVs found in ${requestedProductName}.` };
         }
         
+        console.log(`[getKevFindings] Found ${matchedKevs.length} KEV(s) in ${requestedProductName}.`);
         return {
             message: `Found ${matchedKevs.length} CISA KEV(s) in ${requestedProductName}.`,
             findings: matchedKevs.slice(0, limit),
