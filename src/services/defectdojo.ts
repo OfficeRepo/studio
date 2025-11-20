@@ -85,11 +85,14 @@ export async function defectDojoFetchAll<T>(initialRelativeUrl: string): Promise
 
 
 export async function getProductInfoByName(productName: string): Promise<{ id: number; name: string } | null> {
-    const lowerProductName = productName.trim().toLowerCase().replace(/[\s\-_]/g, '');
+    const normalizedInput = productName.trim().toLowerCase().replace(/[\s\-_]/g, '');
     
+    // First check cache
     for (const key in PRODUCT_MAP) {
-        if (key.toLowerCase() === lowerProductName || PRODUCT_MAP[key].name.toLowerCase().replace(/[\s\-_]/g, '') === lowerProductName) {
-            console.log(`[getProductInfoByName] Found product '${productName}' in cache.`);
+        const normalizedKey = key.toLowerCase().replace(/[\s\-_]/g, '');
+        const normalizedName = PRODUCT_MAP[key].name.toLowerCase().replace(/[\s\-_]/g, '');
+        if (normalizedKey === normalizedInput || normalizedName === normalizedInput) {
+            console.log(`[getProductInfoByName] Found product '${productName}' in cache as '${PRODUCT_MAP[key].name}'.`);
             return PRODUCT_MAP[key];
         }
     }
@@ -99,15 +102,24 @@ export async function getProductInfoByName(productName: string): Promise<{ id: n
         const data = await defectDojoFetch(`products/?limit=1000`);
         const products = PaginatedResponseSchema.extend({ results: z.array(ProductSchema) }).parse(data).results;
 
-        const foundProduct = products.find(p => 
-            p.name.toLowerCase().replace(/[\s\-_]/g, '') === lowerProductName || 
-            String(p.id) === lowerProductName
-        );
+        // Try exact match first (case-insensitive)
+        let foundProduct = products.find(p => p.name.toLowerCase() === productName.toLowerCase());
+        
+        // If not found, try normalized match
+        if (!foundProduct) {
+            foundProduct = products.find(p => 
+                p.name.toLowerCase().replace(/[\s\-_]/g, '') === normalizedInput || 
+                String(p.id) === normalizedInput
+            );
+        }
+        
         if (foundProduct) {
-             console.log(`[getProductInfoByName] Found product '${productName}' via API.`);
+             console.log(`[getProductInfoByName] Found product '${productName}' via API as '${foundProduct.name}' (ID: ${foundProduct.id}).`);
             return { id: foundProduct.id, name: foundProduct.name };
         }
-        console.warn(`[getProductInfoByName] Product '${productName}' not found via API.`);
+        
+        console.warn(`[getProductInfoByName] Product '${productName}' not found via API. Searched normalized: '${normalizedInput}'`);
+        console.warn(`[getProductInfoByName] Available products:`, products.slice(0, 10).map(p => p.name).join(', '));
         return null;
     } catch (error) {
         console.error(`[getProductInfoByName] Error fetching product info for ${productName}:`, error);
@@ -333,7 +345,9 @@ export async function analyzeVulnerabilityData(analysisType: 'component_risk' | 
                 }
             } else {
                  console.warn(`[analyzeVulnerabilityData] None of the specified products were found: ${productName}`);
-                 return { error: `None of the specified products were found: ${productName}` };
+                 const allProductsList = await getProductList();
+                 const availableProducts = allProductsList.map(p => p.name).join(', ');
+                 return { error: `Product not found: "${productName}". Available products: ${availableProducts}` };
             }
         }
 

@@ -12,6 +12,7 @@ import { answerVulnerabilityQuestions } from '@/app/actions';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useData, type Message } from '@/context/DataContext';
+import { motion } from 'framer-motion';
 
 export default function ChatPage() {
   const { messages, setMessages } = useData();
@@ -102,68 +103,89 @@ export default function ChatPage() {
             </div>
           )}
           {messages.map((message) => (
-            <div
+            <motion.div
               key={message.id}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.25 }}
               className={cn(
-                'flex items-start gap-4 animate-in fade-in slide-in-from-bottom-4',
+                'flex items-start gap-4',
                 message.role === 'user' ? 'justify-end' : 'justify-start'
               )}
             >
               {message.role === 'assistant' && (
-                <Avatar className="h-8 w-8 border">
-                   <AvatarFallback><Bot className="h-5 w-5 text-primary" /></AvatarFallback>
-                </Avatar>
+                <div className="w-10 h-10 flex items-center justify-center rounded-full 
+                                bg-gradient-to-br from-purple-500 to-pink-500
+                                text-2xl
+                                shadow-[0_0_20px_rgba(168,85,247,0.8)]">
+                  🤖
+                </div>
               )}
+              {message.role === 'assistant' ? (
+                <div className="max-w-xl p-[2px] rounded-lg bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 shadow-[0_0_15px_rgba(99,102,241,0.4),0_0_30px_rgba(168,85,247,0.3)] animate-pulse">
+                  <div className="bg-card text-card-foreground rounded-lg px-4 py-3 text-sm">
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      className="prose prose-sm max-w-none text-foreground prose-headings:text-foreground prose-p:text-foreground prose-strong:text-foreground prose-li:text-foreground prose-table:text-foreground prose-thead:text-foreground prose-tr:text-foreground prose-th:text-foreground prose-td:text-foreground"
+                      components={{
+                        p: ({node, ...props}) => <p className="leading-relaxed mb-4 last:mb-0" {...props} />,
+                        ul: ({node, ...props}) => <ul className="space-y-2 list-disc list-outside ml-4 mb-4" {...props} />,
+                        ol: ({node, ...props}) => <ol className="space-y-2 list-decimal list-outside ml-4 mb-4" {...props} />,
+                        li: ({node, ...props}) => <li className="pl-1" {...props} />,
+                        strong: ({node, ...props}) => <strong className="font-semibold" {...props} />,
+                        h1: ({node, ...props}) => <h1 className="text-lg font-bold mb-4" {...props} />,
+                        h2: ({node, ...props}) => <h2 className="text-md font-semibold mb-3" {...props} />,
+                        h3: ({node, ...props}) => <h3 className="text-md font-semibold mb-2" {...props} />,
+                        hr: ({node, ...props}) => <hr className="my-4 border-border" {...props} />,
+                        table: ({node, ...props}) => <table className="w-full my-4 border-collapse border border-border" {...props} />,
+                        thead: ({node, ...props}) => <thead className="bg-muted" {...props} />,
+                        tr: ({node, ...props}) => <tr className="border-b border-border" {...props} />,
+                        th: ({node, ...props}) => <th className="p-3 text-left font-semibold border-x border-border" {...props} />,
+                        td: ({node, ...props}) => <td className="p-3 border-x border-border" {...props} />,
+                      }}
+                    >{message.content}</ReactMarkdown>
+                  </div>
+                </div>
+              ) : (
               <div
                 className={cn(
                   'max-w-xl rounded-lg px-4 py-3 text-sm',
-                  message.role === 'user'
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-card text-card-foreground shadow-sm'
+                  'bg-primary text-primary-foreground'
                 )}
               >
-                {message.role === 'user' ? (
-                  <p className="whitespace-pre-wrap">{message.content}</p>
-                ) : (
-                  <ReactMarkdown
-                    remarkPlugins={[remarkGfm]}
-                    className="prose prose-sm max-w-none text-foreground prose-headings:text-foreground prose-p:text-foreground prose-strong:text-foreground prose-li:text-foreground prose-table:text-foreground prose-thead:text-foreground prose-tr:text-foreground prose-th:text-foreground prose-td:text-foreground"
-                    components={{
-                      p: ({node, ...props}) => <p className="leading-relaxed mb-4 last:mb-0" {...props} />,
-                      ul: ({node, ...props}) => <ul className="space-y-2 list-disc list-outside ml-4 mb-4" {...props} />,
-                      ol: ({node, ...props}) => <ol className="space-y-2 list-decimal list-outside ml-4 mb-4" {...props} />,
-                      li: ({node, ...props}) => <li className="pl-1" {...props} />,
-                      strong: ({node, ...props}) => <strong className="font-semibold" {...props} />,
-                      h1: ({node, ...props}) => <h1 className="text-lg font-bold mb-4" {...props} />,
-                      h2: ({node, ...props}) => <h2 className="text-md font-semibold mb-3" {...props} />,
-                      h3: ({node, ...props}) => <h3 className="text-md font-semibold mb-2" {...props} />,
-                      hr: ({node, ...props}) => <hr className="my-4 border-border" {...props} />,
-                      table: ({node, ...props}) => <table className="w-full my-4 border-collapse border border-border" {...props} />,
-                      thead: ({node, ...props}) => <thead className="bg-muted" {...props} />,
-                      tr: ({node, ...props}) => <tr className="border-b border-border" {...props} />,
-                      th: ({node, ...props}) => <th className="p-3 text-left font-semibold border-x border-border" {...props} />,
-                      td: ({node, ...props}) => <td className="p-3 border-x border-border" {...props} />,
-                    }}
-                  >{message.content}</ReactMarkdown>
-                )}
+                <p className="whitespace-pre-wrap">{message.content}</p>
               </div>
-              {message.role === 'user' && (
-                 <Avatar className="h-8 w-8 border">
-                    <AvatarFallback><User className="h-5 w-5" /></AvatarFallback>
-                </Avatar>
               )}
-            </div>
+              {message.role === 'user' && (
+                <div className="w-10 h-10 flex items-center justify-center rounded-full 
+                                bg-gradient-to-br from-blue-500 to-cyan-500
+                                text-2xl
+                                shadow-[0_0_20px_rgba(59,130,246,0.8)]">
+                  👤
+                </div>
+              )}
+            </motion.div>
           ))}
           {isLoading && (
-            <div className="flex items-start gap-4">
-               <Avatar className="h-8 w-8 border">
-                <AvatarFallback><Bot className="h-5 w-5 text-primary" /></AvatarFallback>
-              </Avatar>
-              <div className="max-w-lg rounded-lg bg-background shadow-sm px-4 py-3 text-sm flex items-center gap-2">
-                <CircleDashed className="h-4 w-4 animate-spin" />
-                <span className="text-foreground">Thinking...</span>
+            <motion.div 
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.25 }}
+              className="flex items-start gap-4">
+              <div className="w-10 h-10 flex items-center justify-center rounded-full 
+                              bg-gradient-to-br from-purple-500 to-pink-500
+                              text-2xl
+                              shadow-[0_0_20px_rgba(168,85,247,0.8)]">
+                🤖
               </div>
-            </div>
+              <div className="p-[2px] rounded-lg bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 shadow-[0_0_15px_rgba(99,102,241,0.4),0_0_30px_rgba(168,85,247,0.3)] animate-pulse">
+                <div className="rounded-lg bg-card px-6 py-4 text-sm flex items-center gap-1.5">
+                  <div className="w-2 h-2 bg-primary rounded-full dot-bounce"></div>
+                  <div className="w-2 h-2 bg-primary rounded-full dot-bounce"></div>
+                  <div className="w-2 h-2 bg-primary rounded-full dot-bounce"></div>
+                </div>
+              </div>
+            </motion.div>
           )}
         </div>
       </ScrollArea>
