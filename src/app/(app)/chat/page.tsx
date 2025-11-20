@@ -1,12 +1,13 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { SendHorizonal, Bot, User, CircleDashed, CornerDownLeft, BotMessageSquare } from 'lucide-react';
+import { SendHorizonal, Bot, User, CircleDashed, CornerDownLeft, BotMessageSquare, History, Trash2, Plus, MessageSquare } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Card, CardContent } from '@/components/ui/card';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
 import { answerVulnerabilityQuestions } from '@/app/actions';
 import ReactMarkdown from 'react-markdown';
@@ -15,7 +16,7 @@ import { useData, type Message } from '@/context/DataContext';
 import { motion } from 'framer-motion';
 
 export default function ChatPage() {
-  const { messages, setMessages } = useData();
+  const { messages, setMessages, chatHistories, currentChatId, loadChat, deleteChat, startNewChat } = useData();
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -78,6 +79,82 @@ export default function ChatPage() {
 
   return (
     <div className="flex h-[calc(100vh_-_theme(spacing.24))] flex-col bg-card rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.05)]">
+      {/* Header with History Button */}
+      <div className="flex items-center justify-between border-b px-4 py-3">
+        <h2 className="text-lg font-semibold flex items-center gap-2">
+          <MessageSquare className="h-5 w-5 text-primary" />
+          Chat
+        </h2>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={startNewChat}>
+            <Plus className="h-4 w-4 mr-1" />
+            New Chat
+          </Button>
+          <Sheet>
+            <SheetTrigger asChild>
+              <Button variant="outline" size="sm">
+                <History className="h-4 w-4 mr-1" />
+                History ({chatHistories.length})
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="right" className="w-80">
+              <SheetHeader>
+                <SheetTitle>Chat History</SheetTitle>
+              </SheetHeader>
+              <ScrollArea className="h-[calc(100vh-8rem)] mt-4">
+                <div className="space-y-2">
+                  {chatHistories.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-8">
+                      No chat history yet
+                    </p>
+                  ) : (
+                    chatHistories
+                      .sort((a, b) => b.timestamp - a.timestamp)
+                      .map((chat) => (
+                        <Card
+                          key={chat.id}
+                          className={cn(
+                            "cursor-pointer hover:bg-accent transition-colors",
+                            currentChatId === chat.id && "border-primary bg-accent"
+                          )}
+                          onClick={() => loadChat(chat.id)}
+                        >
+                          <CardContent className="p-3">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium truncate">
+                                  {chat.title}
+                                </p>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  {new Date(chat.timestamp).toLocaleDateString()} {new Date(chat.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  {chat.messages.length} messages
+                                </p>
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-destructive hover:text-destructive"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  deleteChat(chat.id);
+                                }}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))
+                  )}
+                </div>
+              </ScrollArea>
+            </SheetContent>
+          </Sheet>
+        </div>
+      </div>
+      
       <ScrollArea className="flex-1" ref={scrollAreaRef}>
         <div className="p-4 sm:p-6 space-y-6">
           {messages.length === 0 && !isLoading && (
