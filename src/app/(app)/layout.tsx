@@ -51,7 +51,7 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
             <div className="flex items-center gap-2">
               <Button variant="ghost" size="icon" className="h-12 w-12 text-primary" asChild>
                   <Link href="/chat">
-                      <Image src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRvCKHps5VfsykZJte_7fqTNw3ccC_bVn3jzA&s" width={32} height={32} alt="Medtronic Logo" className="rounded-full" />
+                      <Image src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRvCKHps5VfsykZJte_7fqTNw3ccC_bVn3jzA&s" width={48} height={48} alt="Medtronic Logo" className="rounded-full" />
                   </Link>
               </Button>
               <h1 className="text-lg font-semibold tracking-tight group-data-[collapsible=icon]:hidden">
